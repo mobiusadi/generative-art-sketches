@@ -1,0 +1,107 @@
+const canvasSketch = require('canvas-sketch');
+const random = require('canvas-sketch-util/random');
+const math = require('canvas-sketch-util/math');
+
+const settings = {
+  dimensions: [ 1080, 1080 ],
+  animate: true
+};
+
+// --- MATH HELPERS ---
+
+// 1. The "Tree" Logic: A triangle resting on its wide base
+const drawTree = (context, x, y, size) => {
+  context.beginPath();
+  const height = size * (Math.sqrt(3) / 2);
+  // Pointing UP
+  context.moveTo(x, y - height / 2);          // Top Tip
+  context.lineTo(x - size / 2, y + height / 2); // Bottom Left
+  context.lineTo(x + size / 2, y + height / 2); // Bottom Right
+  context.closePath();
+  context.fill();
+};
+
+// 2. The "Filter": Checks if a point is inside a triangle
+const isPointInTriangle = (p, p0, p1, p2) => {
+  const A = 0.5 * (-p1.y * p2.x + p0.y * (-p1.x + p2.x) + p0.x * (p1.y - p2.y) + p1.x * p2.y);
+  const sign = A < 0 ? -1 : 1;
+  const s = (p0.y * p2.x - p0.x * p2.y + (p2.y - p0.y) * p.x + (p0.x - p2.x) * p.y) * sign;
+  const t = (p0.x * p1.y - p0.y * p1.x + (p0.y - p1.y) * p.x + (p1.x - p0.x) * p.y) * sign;
+  return s > 0 && t > 0 && (s + t) < 2 * A * sign;
+};
+
+const sketch = ({ width, height }) => {
+  return ({ context, width, height, time }) => {
+    // Background
+    context.fillStyle = 'black';
+    context.fillRect(0, 0, width, height);
+
+    // Center the drawing
+    const cx = width * 0.5;
+    const cy = height * 0.5;
+    
+    // --- CONFIGURATION ---
+    const scale = 300; // Size of the big triangles
+    const gridSize = 15; // Space between small trees
+    const scatterAmount = 5; // How much they "shiver"
+
+    // Define the 3 Large Triangles (Vertices)
+    // You can adjust these coordinates to change the logo shape
+    const shapes = [
+      { 
+        color: '#165d31', // Green
+        points: [ 
+          { x: cx - scale, y: cy + scale/2 }, // Bottom Left
+          { x: cx - scale/2, y: cy - scale/2 }, // Top
+          { x: cx, y: cy + scale/2 }  // Bottom Right
+        ] 
+      },
+      { 
+        color: '#ffffff', // Pure White
+        points: [ 
+          { x: cx - scale/2, y: cy - scale/2 }, // Top Left
+          { x: cx, y: cy + scale/2 }, // Bottom
+          { x: cx + scale/2, y: cy - scale/2 } // Top Right (Inverted Triangle)
+        ] 
+      },
+      { 
+        color: '#f47920', // Orange
+        points: [ 
+          { x: cx, y: cy + scale/2 }, // Bottom Left
+          { x: cx + scale/2, y: cy - scale/2 }, // Top
+          { x: cx + scale, y: cy + scale/2 } // Bottom Right
+        ] 
+      }
+    ];
+
+    // --- DRAWING LOOP ---
+    shapes.forEach(shape => {
+      context.fillStyle = shape.color;
+      const [p0, p1, p2] = shape.points;
+
+      // Scan a bounding box around the shape
+      const minX = Math.min(p0.x, p1.x, p2.x);
+      const maxX = Math.max(p0.x, p1.x, p2.x);
+      const minY = Math.min(p0.y, p1.y, p2.y);
+      const maxY = Math.max(p0.y, p1.y, p2.y);
+
+      for (let y = minY; y < maxY; y += gridSize) {
+        for (let x = minX; x < maxX; x += gridSize) {
+          
+          // The Magic Check: Are we inside the triangle?
+          if (isPointInTriangle({x, y}, p0, p1, p2)) {
+            
+            // Add "Scatter" animation using noise or random
+            // using Math.sin(time) makes them breathe gently
+            const scatterX = random.noise3D(x, y, time, 0.005, scatterAmount);
+            const scatterY = random.noise3D(x, y, time + 100, 0.005, scatterAmount);
+
+            drawTree(context, x + scatterX, y + scatterY, gridSize * 0.6);
+          }
+        }
+      }
+    });
+  };
+};
+
+canvasSketch(sketch, settings);

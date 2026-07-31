@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Architectural Intelligence | Showroom</title>
+    <style>
+        :root { --bg: #0a0a0a; --text: #e0e0e0; --accent: #ffffff; }
+        body { margin: 0; background: var(--bg); font-family: Helvetica, Arial, sans-serif; color: var(--text); display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+        /* HERO STAGE */
+        #stage-container { flex: 7; position: relative; border-bottom: 1px solid #333; }
+        
+        /* The TV Screen */
+        iframe { width: 100%; height: 100%; border: none; display: block; }
+
+        /* Floating HUD */
+        .hud { position: absolute; top: 2rem; left: 2rem; pointer-events: none; background: rgba(0,0,0,0.5); padding: 10px; border-radius: 4px; }
+        h1 { margin: 0; font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+        h2 { margin: 0; font-size: 24px; color: var(--accent); }
+
+        /* MATERIAL TRAY */
+        #tray { flex: 3; padding: 2rem; display: flex; gap: 1rem; overflow-x: auto; background: #111; align-items: center; }
+        
+        .card { 
+            min-width: 180px; height: 120px; background: #222; border: 1px solid #333; 
+            cursor: pointer; display: flex; flex-direction: column; justify-content: flex-end; 
+            transition: transform 0.2s; position: relative;
+        }
+        .card:hover { border-color: #666; transform: translateY(-4px); }
+        .card.active { border-color: var(--accent); background: #1a1a1a; }
+        
+        /* Thumbnail preview (colors) */
+        .preview { flex-grow: 1; opacity: 0.6; transition: 0.3s; }
+        .card:hover .preview { opacity: 1; }
+        
+        .label { padding: 8px; font-size: 11px; text-transform: uppercase; background: rgba(0,0,0,0.6); }
+
+        /* Scrollbar */
+        #tray::-webkit-scrollbar { height: 6px; }
+        #tray::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+    </style>
+</head>
+<body>
+
+    <div id="stage-container">
+        <div class="hud">
+            <h1>Current Algorithm</h1>
+            <h2 id="sketch-title">Select a Sketch</h2>
+        </div>
+        <iframe id="viewer" src=""></iframe>
+    </div>
+
+    <div id="tray">
+        </div>
+
+    <script>
+        // --- 1. THE CONFIGURATION LIST ---
+        // Add your new sketches here! This is your "CMS".
+        const gallery = [
+            {
+                title: "Ashlar Grain",
+                file: "sketch-ashlar-grain.js", // The file we just made
+                color: "linear-gradient(45deg, #003300, #0088ff)" 
+            },
+            {
+                title: "Joy Division",
+                file: "sketch-joy.js", // Your mountains sketch
+                color: "black" 
+            },
+            {
+                title: "Organic Blobs",
+                file: "sketch-blobs.js", 
+                color: "linear-gradient(to bottom, pink, purple)" 
+            },
+            {
+                title: "Torus Geometry",
+                file: "sketch-torus.js", 
+                color: "#333" 
+            },
+            {
+                title: "Stained Glass",
+                file: "sketch-saver.js", 
+                color: "linear-gradient(45deg, orange, red)" 
+            }
+        ];
+
+        // --- 2. THE BUILDER ---
+        const tray = document.getElementById('tray');
+        const viewer = document.getElementById('viewer');
+        const title = document.getElementById('sketch-title');
+
+        // Loop through the data and create buttons
+        gallery.forEach((item, index) => {
+            const card = document.createElement('div');
+            card.className = 'card';
+            if(index === 0) card.classList.add('active'); // Select first one by default
+
+            // Create colorful preview box
+            const preview = document.createElement('div');
+            preview.className = 'preview';
+            preview.style.background = item.color;
+            
+            // Label
+            const label = document.createElement('div');
+            label.className = 'label';
+            label.innerText = item.title;
+
+            card.appendChild(preview);
+            card.appendChild(label);
+
+            // Click Interaction
+            card.addEventListener('click', () => {
+                loadSketch(item, card);
+            });
+
+            tray.appendChild(card);
+        });
+
+        // --- 3. THE LOADER LOGIC ---
+        function loadSketch(item, activeCard) {
+            // Update UI
+            document.querySelectorAll('.card').forEach(c => c.classList.remove('active'));
+            if(activeCard) activeCard.classList.add('active');
+            
+            title.innerText = item.title;
+
+            // MAGIC TRICK:
+            // Since canvas-sketch runs in node, simply pointing the iframe to the JS file won't work perfectly 
+            // without a build process. 
+            // HOWEVER, we can use a clever trick: canvas-sketch-cli usually hosts a viewer.
+            // For now, let's assume we are viewing the raw JS output or a built HTML.
+            
+            // If you are running 'canvas-sketch --stream', usually you view on port 9966.
+            // But for this static file, we need a wrapper.
+            // simpler approach for Cloud Shell:
+            
+            viewer.srcdoc = `
+                <html>
+                <body style="margin:0; overflow:hidden;">
+                    <script src="https://unpkg.com/canvas-sketch@latest/dist/canvas-sketch.umd.js"><\/script>
+                    <script src="https://unpkg.com/canvas-sketch-util@latest/random.js"><\/script>
+                    <script src="https://unpkg.com/canvas-sketch-util@latest/math.js"><\/script>
+                    <script src="https://unpkg.com/colormap@2.3.2/index.js"><\/script>
+                    <script src="https://unpkg.com/tweakpane@3.1.0/dist/tweakpane.js"><\/script>
+                    <script>
+                        // Shim 'require' for browser
+                        window.require = (name) => {
+                            if(name === 'canvas-sketch') return canvasSketch;
+                            if(name === 'canvas-sketch-util/random') return canvasSketch.util.random;
+                            if(name === 'canvas-sketch-util/math') return canvasSketch.util.math;
+                            if(name === 'colormap') return colormap;
+                            if(name === 'tweakpane') return Tweakpane;
+                            return {};
+                        }
+                        // Shim 'module.exports'
+                        window.module = { exports: {} };
+                    <\/script>
+                    <script src="${item.file}"><\/script>
+                </body>
+                </html>
+            `;
+        }
+
+        // Load the first one on start
+        if(gallery.length > 0) {
+            loadSketch(gallery[0], tray.children[0]);
+        }
+
+    </script>
+</body>
+</html>

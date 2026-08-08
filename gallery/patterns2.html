@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Architectural Intelligence | Patterns</title>
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.1.0/dist/tweakpane.min.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
+        canvas { display: block; }
+        .home-btn {
+            position: fixed; top: 20px; left: 20px;
+            color: #fff; text-decoration: none; font-family: monospace;
+            font-size: 14px; z-index: 1000; border: 1px solid #fff; padding: 5px 10px; transition: 0.3s;
+            mix-blend-mode: difference;
+        }
+        .home-btn:hover { background: #fff; color: #000; }
+    </style>
+</head>
+<body>
+
+    <a href="index.html" class="home-btn">← Home</a>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Create an off-screen "scratch pad" canvas for processing the mask layer
+        const maskCanvas = document.createElement('canvas');
+        const maskCtx = maskCanvas.getContext('2d');
+        
+        let width, height;
+
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            // Resize both main and scratch canvases
+            canvas.width = width;
+            canvas.height = height;
+            maskCanvas.width = width;
+            maskCanvas.height = height;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // --- PARAMETERS ---
+        const params = {
+            // Grid Layout
+            gridCols: 15,
+            gridRows: 10,
+            spacing: 70,
+            stagger: false,
+            
+            // Geometry
+            sides: 36, // Circle
+            radius: 25,
+            rotation: 0,
+            addTwist: false, // Separate toggle for the twist effect
+            randomPoly: false,
+            
+            // Expansion
+            spread: 1.0,
+            
+            // Materials
+            baseGradient: 'salinity', // Inside holes
+            maskGradient: 'magma',    // Surface
+        };
+
+        const PALETTES = {
+            magma: ['#000004', '#3B0F70', '#8F2275', '#F66F1C', '#FCFFB2'],
+            salinity: ['#3C1802', '#6D3C0F', '#DDB541', '#FEFF71', '#CFD5EE', '#4D80FF', '#0046FA'],
+            jet: ['#00008F', '#0000FF', '#00FFFF', '#FFFF00', '#FF0000', '#800000'],
+            mono: ['#111', '#555', '#999', '#eee'],
+            none: [] // For black holes
+        };
+
+        // Help get gradient for a specific context (main or mask)
+        function getGradient(context, name, w, h) {
+            if (name === 'none') return '#000';
+            const grad = context.createLinearGradient(0, 0, w, h);
+            const colors = PALETTES[name] || PALETTES['mono'];
+            colors.forEach((c, i) => grad.addColorStop(i / (colors.length - 1), c));
+            return grad;
+        }
+
+        function drawPolygon(context, x, y, radius, sides, rotation) {
+            context.beginPath();
+            for (let i = 0; i < sides; i++) {
+                const theta = rotation + (i / sides) * Math.PI * 2;
+                // Adjust angle to point upwards if it's a triangle or odd shape
+                const adjustedTheta = sides % 2 !== 0 ? theta - Math.PI/2 : theta;
+                const px = x + Math.cos(adjustedTheta) * radius;
+                const py = y + Math.sin(adjustedTheta) * radius;
+                if (i === 0) context.moveTo(px, py);
+                else context.lineTo(px, py);
+            }
+            context.closePath();
+            context.fill();
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // --- STEP 1: Draw the BASE layer (Hole color) on main canvas ---
+            ctx.globalCompositeOperation = 'source-over';
+            if (params.baseGradient === 'none') {
+                ctx.clearRect(0, 0, width, height); // Clears to CSS black background
+            } else {
+                ctx.fillStyle = getGradient(ctx, params.baseGradient, width, height);
+                ctx.fillRect(0, 0, width, height);
+            }
+
+            // --- STEP 2: Prepare the MASK layer on off-screen canvas ---
+            
+            // 2a. Fill off-screen canvas with the Surface gradient
+            maskCtx.globalCompositeOperation = 'source-over';
+            maskCtx.fillStyle = getGradient(maskCtx, params.maskGradient, width, height);
+            maskCtx.fillRect(0, 0, width, height);
+
+            // 2b. Set to "Eraser" mode to punch holes
+            maskCtx.globalCompositeOperation = 'destination-out';
+            maskCtx.fillStyle = '#000'; // Color doesn't matter in this mode
+
+            // Calculate grid centering
+            const totalGridWidth = (params.gridCols - 1) * params.spacing;
+            const totalGridHeight = (params.gridRows - 1) * params.spacing;
+            const startX = (width - totalGridWidth) / 2;
+            const startY = (height - totalGridHeight) / 2;
+            const centerX = width / 2;
+            const centerY = height / 2;
+
+            // Loop through rows and columns
+            for (let y = 0; y < params.gridRows; y++) {
+                for (let x = 0; x < params.gridCols; x++) {
+                    
+                    let px = startX + x * params.spacing;
+                    let py = startY + y * params.spacing;
+
+                    if (params.stagger && y % 2 !== 0) {
+                        px += params.spacing / 2;
+                    }
+
+                    // Expansion Logic
+                    const dist = Math.sqrt(Math.pow(px - centerX, 2) + Math.pow(py - centerY, 2));
+                    const maxDist = (width / 2) * 1.4;
+                    const distNorm = dist / maxDist;
+                    
+                    if (distNorm > params.spread) continue; 
+
+                    let localRadius = params.radius;
+                    // Smooth fade out at edges of spread
+                    if (distNorm > params.spread * 0.85) {
+                         const fade = (params.spread - distNorm) / (params.spread * 0.15);
+                         localRadius *= Math.max(0, fade);
+                    }
+
+                    // Random Poly Logic
+                    const seed = (x * 73 + y * 199);
+                    let localSides = params.sides;
+                    if (params.randomPoly) {
+                        const variants = [3, 4, 6, 36];
+                        localSides = variants[seed % variants.length];
+                    }
+
+                    // Rotation Logic
+                    let localRot = params.rotation;
+                    if(params.addTwist) {
+                         localRot += (distNorm * 2); // Only add twist if checked
+                    }
+
+                    // Draw the hole on the mask canvas
+                    drawPolygon(maskCtx, px, py, localRadius, localSides, localRot);
+                }
+            }
+            
+            // --- STEP 3: Composite ---
+            // Draw the finished mask layer containing the holes onto the main canvas
+            ctx.drawImage(maskCanvas, 0, 0);
+        }
+
+        // --- CONTROLS ---
+        const pane = new Tweakpane.Pane({ title: 'Pattern Controls' });
+        
+        const f1 = pane.addFolder({ title: 'Grid Layout' });
+        f1.addInput(params, 'gridCols', { min: 1, max: 50, step: 1, label: 'Columns' });
+        f1.addInput(params, 'gridRows', { min: 1, max: 50, step: 1, label: 'Rows' });
+        f1.addInput(params, 'spacing', { min: 20, max: 200 });
+        f1.addInput(params, 'stagger');
+        f1.addInput(params, 'spread', { min: 0, max: 1.5, label: 'Expansion' });
+
+        const f2 = pane.addFolder({ title: 'Geometry' });
+        f2.addInput(params, 'radius', { min: 1, max: 150 });
+        f2.addInput(params, 'sides', { min: 3, max: 36, step: 1 });
+        f2.addInput(params, 'randomPoly', { label: 'Mix Shapes' });
+        f2.addInput(params, 'rotation', { min: 0, max: Math.PI * 2 });
+        f2.addInput(params, 'addTwist', { label: 'Add Twist' });
+
+        const f3 = pane.addFolder({ title: 'Materials' });
+        f3.addInput(params, 'baseGradient', { 
+            options: { 'None (Black)': 'none', Salinity: 'salinity', Magma: 'magma', Jet: 'jet', Mono: 'mono' }, 
+            label: 'Hole Color' 
+        });
+        f3.addInput(params, 'maskGradient', { 
+            options: { Magma: 'magma', Salinity: 'salinity', Mono: 'mono', Jet: 'jet' }, 
+            label: 'Surface Color' 
+        });
+
+        animate();
+    </script>
+</body>
+</html>

@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interference Field | Final</title>
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.1.0/dist/tweakpane.min.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
+        canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <script type="module">
+        import colormapPkg from 'https://esm.sh/colormap@2.3.2';
+        const createColormap = colormapPkg.default || colormapPkg;
+
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+        // --- PSEUDO-RANDOM GENERATOR ---
+        let seedVal = 1;
+        function seedRandom(seed) {
+            let str = seed.toString();
+            let h = 0x811c9dc5;
+            for (let i = 0; i < str.length; i++) {
+                h ^= str.charCodeAt(i);
+                h = Math.imul(h, 0x01000193);
+            }
+            seedVal = h >>> 0;
+        }
+
+        function random() {
+            seedVal = (seedVal * 1664525 + 1013904223) % 4294967296;
+            return seedVal / 4294967296;
+        }
+
+        // --- CONFIGURATION ---
+        const params = {
+            seed: 100,          
+            palette: 'salinity', // Defaulting to the new request
+            numEmitters: 6,     
+            waveSpeed: 0.5,     
+            frequency: 0.03,    
+            contrast: 1.5,      
+            resolutionScale: 0.5,
+            showEmitters: true, 
+            paused: false
+        };
+
+        let width, height;
+        let emitters = [];
+        let imageData;
+        let data;
+        let simulationTime = 0;
+        let colorLUT = []; 
+
+        // --- EMITTER OBJECT ---
+        class Emitter {
+            constructor() {
+                this.nx = random();
+                this.ny = random();
+                this.freqMod = 0.9 + random() * 0.2; 
+            }
+            getPos(w, h) { return { x: this.nx * w, y: this.ny * h }; }
+        }
+
+        function initEmitters() {
+            seedRandom(params.seed);
+            emitters = [];
+            for (let i = 0; i < params.numEmitters; i++) {
+                emitters.push(new Emitter());
+            }
+        }
+
+        // --- COLOR PALETTE GENERATION ---
+        function updatePalette() {
+            const colors = createColormap({
+                colormap: params.palette,
+                nshades: 256,
+                format: 'rgba',
+                alpha: 1
+            });
+            
+            colorLUT = new Uint8Array(256 * 4);
+            for(let i=0; i<256; i++) {
+                const c = colors[i];
+                colorLUT[i*4 + 0] = c[0]; 
+                colorLUT[i*4 + 1] = c[1]; 
+                colorLUT[i*4 + 2] = c[2]; 
+                colorLUT[i*4 + 3] = 255;  
+            }
+        }
+
+        // --- DRAWING ---
+        function drawPixels(time) {
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    let totalDisplacement = 0;
+                    for (const e of emitters) {
+                        const pos = e.getPos(width, height);
+                        const dx = x - pos.x;
+                        const dy = y - pos.y;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        totalDisplacement += Math.sin(dist * params.frequency * e.freqMod - time * params.waveSpeed);
+                    }
+                    
+                    let normalizedVal = Math.abs(totalDisplacement) / params.numEmitters;
+                    normalizedVal = Math.pow(normalizedVal, params.contrast);
+                    
+                    if(normalizedVal > 1.0) normalizedVal = 1.0;
+                    if(normalizedVal < 0.0) normalizedVal = 0.0;
+
+                    const paletteIndex = Math.floor(normalizedVal * 255);
+                    const lutIdx = paletteIndex * 4;
+
+                    const index = (y * width + x) * 4;
+                    data[index] = colorLUT[lutIdx];
+                    data[index+1] = colorLUT[lutIdx+1];
+                    data[index+2] = colorLUT[lutIdx+2];
+                    data[index+3] = 255;
+                }
+            }
+            ctx.putImageData(imageData, 0, 0);
+        }
+
+        function drawOverlays() {
+            if (!params.showEmitters) return;
+            for (const e of emitters) {
+                const pos = e.getPos(width, height);
+                const r = 10;
+                ctx.beginPath();
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+                ctx.lineWidth = 2;
+                ctx.arc(pos.x, pos.y, r, 0, Math.PI * 2);
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+                ctx.lineWidth = 1;
+                const ext = 4; 
+                ctx.moveTo(pos.x - r - ext, pos.y); ctx.lineTo(pos.x + r + ext, pos.y);
+                ctx.moveTo(pos.x, pos.y - r - ext); ctx.lineTo(pos.x, pos.y + r + ext);
+                ctx.stroke();
+            }
+        }
+
+        // --- ANIMATION LOOP ---
+        let lastTime = 0;
+        function animate(timeStamp) {
+            requestAnimationFrame(animate);
+            const dt = (timeStamp - lastTime) / 1000;
+            lastTime = timeStamp;
+
+            if (!params.paused) {
+                simulationTime += dt;
+            }
+            drawPixels(simulationTime);   
+            drawOverlays();     
+        }
+
+        function resize() {
+            width = Math.floor(window.innerWidth * params.resolutionScale);
+            height = Math.floor(window.innerHeight * params.resolutionScale);
+            canvas.width = width;
+            canvas.height = height;
+            imageData = ctx.createImageData(width, height);
+            data = imageData.data;
+            initEmitters(); 
+        }
+        window.addEventListener('resize', resize);
+
+        function saveImage() {
+            const link = document.createElement('a');
+            link.download = `interference-${params.palette}-seed${params.seed}.png`;
+            link.href = canvas.toDataURL();
+            link.click();
+        }
+
+        // --- CONTROLS ---
+        const pane = new Tweakpane.Pane({ title: 'Interference Lab' });
+        
+        const fGen = pane.addFolder({ title: 'Generator' });
+        fGen.addInput(params, 'seed', { min: 0, max: 1000, step: 1, label: 'Seed ID' }).on('change', initEmitters); 
+        fGen.addInput(params, 'numEmitters', { min: 1, max: 15, step: 1, label: 'Sources' }).on('change', initEmitters);
+
+        const fSim = pane.addFolder({ title: 'Physics' });
+        fSim.addInput(params, 'paused', { label: 'PAUSE' });
+        fSim.addInput(params, 'waveSpeed', { min: 0.0, max: 5.0, label: 'Wave Speed' });
+        fSim.addInput(params, 'frequency', { min: 0.01, max: 0.1, label: 'Wavelength' });
+
+        const fVis = pane.addFolder({ title: 'Visuals' });
+        fVis.addInput(params, 'palette', { 
+            options: {
+                Salinity: 'salinity', // Added as requested
+                Jet: 'jet',
+                Magma: 'magma',
+                Inferno: 'inferno',
+                Plasma: 'plasma',
+                Viridis: 'viridis',
+                Greys: 'greys',
+                Hot: 'hot',
+                Cool: 'cool'
+            }, label: 'Palette'
+        }).on('change', updatePalette); 
+
+        fVis.addInput(params, 'showEmitters', { label: 'Show Markers' });
+        fVis.addInput(params, 'contrast', { min: 0.5, max: 3.0, label: 'Contrast' });
+        fVis.addInput(params, 'resolutionScale', { min: 0.1, max: 1.0, step: 0.1, label: 'Res (Perf)' }).on('change', resize);
+
+        pane.addSeparator();
+        pane.addButton({ title: 'Save Image' }).on('click', saveImage);
+
+        // Start
+        updatePalette(); 
+        initEmitters();  
+        resize();
+        requestAnimationFrame(animate);
+
+    </script>
+</body>
+</html>

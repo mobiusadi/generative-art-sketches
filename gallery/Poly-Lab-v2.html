@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Architectural Intelligence | Generative Lab</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #111; font-family: 'Helvetica Neue', Arial, sans-serif; color: #fff; }
+        
+        #ui {
+            position: absolute; top: 20px; left: 20px; width: 280px;
+            background: rgba(20, 20, 25, 0.95); padding: 20px; border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.6); border: 1px solid #333;
+        }
+        h1 { font-size: 12px; letter-spacing: 2px; color: #00e5ff; text-transform: uppercase; margin: 0 0 15px 0; border-bottom: 1px solid #333; padding-bottom: 10px; }
+        
+        .control-group { margin-bottom: 20px; }
+        label { display: flex; justify-content: space-between; font-size: 10px; color: #888; text-transform: uppercase; margin-bottom: 8px; }
+        
+        select { width: 100%; padding: 10px; background: #222; border: 1px solid #444; color: #fff; border-radius: 4px; outline: none; font-size: 13px; cursor: pointer; }
+        select:hover { border-color: #555; }
+
+        input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; margin: 5px 0; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 14px; width: 14px; border-radius: 50%; background: #00e5ff; cursor: pointer; margin-top: -5px; }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: #333; border-radius: 2px; }
+
+        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; border-top: 1px solid #333; padding-top: 15px; }
+        .info-item span { display: block; font-size: 9px; color: #666; text-transform: uppercase; }
+        .info-item strong { display: block; font-size: 14px; color: #fff; margin-top: 2px; }
+        
+        /* Status Colors */
+        .status-perfect { color: #00e5ff; } /* Cyan for pure shapes */
+        .status-trans { color: #888; font-style: italic; } /* Grey for in-between */
+
+        .watermark { position: absolute; bottom: 20px; right: 20px; text-align: right; pointer-events: none; opacity: 0.5; }
+        .watermark h2 { font-size: 12px; margin: 0; color: #fff; letter-spacing: 2px; }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <h1>Generative Geometry</h1>
+        
+        <div class="control-group">
+            <label>Seed Form</label>
+            <select id="seedSelect" onchange="updateGeometry()">
+                <option value="Tetrahedron">Tetrahedron</option>
+                <option value="Cube">Cube</option>
+                <option value="Octahedron">Octahedron</option>
+                <option value="Dodecahedron">Dodecahedron</option>
+                <option value="Icosahedron">Icosahedron</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label>
+                <span>Truncation Factor</span>
+                <span id="valTrunc">0.00</span>
+            </label>
+            <input type="range" id="paramTrunc" min="0" max="0.5" step="0.01" value="0" oninput="updateGeometry()">
+        </div>
+
+        <div class="info-grid">
+            <div class="info-item"><span>Vertices</span><strong id="dispVerts">-</strong></div>
+            <div class="info-item"><span>Faces</span><strong id="dispFaces">-</strong></div>
+            <div class="info-item" style="grid-column: span 2; margin-top: 5px;">
+                <span>Current State</span><strong id="dispName" class="status-perfect">-</strong>
+            </div>
+        </div>
+    </div>
+
+    <div class="watermark"><h2>ARCHITECTURAL INTELLIGENCE</h2></div>
+
+    <script>
+        // --- 1. SETUP ---
+        const scene = new THREE.Scene(); scene.background = new THREE.Color(0x050505);
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 100); camera.position.set(4, 3, 5);
+        const renderer = new THREE.WebGLRenderer({ antialias: true }); renderer.setSize(window.innerWidth, window.innerHeight); document.body.appendChild(renderer.domElement);
+        const controls = new THREE.OrbitControls(camera, renderer.domElement); controls.enableDamping = true; controls.autoRotate = true; controls.autoRotateSpeed = 1.0;
+
+        const ambient = new THREE.AmbientLight(0x404040, 2); scene.add(ambient);
+        const spot = new THREE.SpotLight(0xffffff, 1); spot.position.set(10, 20, 10); scene.add(spot);
+        const blueLight = new THREE.PointLight(0x00e5ff, 1, 10); blueLight.position.set(-2, 1, 2); scene.add(blueLight);
+
+        let mesh, edges;
+
+        // --- 2. DATA CONSTANTS ---
+        // Base Face/Vert counts for Seed Forms to calculate transitions
+        const SEED_DATA = {
+            'Tetrahedron': { f: 4, v: 4 },
+            'Cube': { f: 6, v: 8 },
+            'Octahedron': { f: 8, v: 6 },
+            'Dodecahedron': { f: 12, v: 20 },
+            'Icosahedron': { f: 20, v: 12 }
+        };
+
+        // --- 3. GENERATIVE LOGIC ---
+        function generateProcedural(type, t) {
+            let finalGeo, finalName, isPerfect = false;
+            let faces = SEED_DATA[type].f;
+            let verts = SEED_DATA[type].v;
+
+            // --- 0% STATE (SEED) ---
+            if (t <= 0.05) {
+                finalName = type;
+                isPerfect = true;
+                if (type === 'Cube') finalGeo = new THREE.BoxGeometry(2,2,2);
+                else if (type === 'Octahedron') finalGeo = new THREE.OctahedronGeometry(1.5,0);
+                else if (type === 'Tetrahedron') finalGeo = new THREE.TetrahedronGeometry(1.5,0);
+                else if (type === 'Icosahedron') finalGeo = new THREE.IcosahedronGeometry(1.5,0);
+                else finalGeo = new THREE.DodecahedronGeometry(1.5,0);
+            }
+            // --- 50% STATE (DESTINATION) ---
+            else if (t >= 0.45) {
+                isPerfect = true;
+                // Destination Faces = Old Faces + Old Vertices (e.g., Cube 6 + 8 = 14)
+                faces = faces + verts;
+                verts = verts * 2; // Roughly correct for rectified forms (Cuboctahedron has 12, Cube has 8? Wait. Cuboctahedron has 12 verts. Rectification V_new = Midpoints of Edges.)
+                
+                // Specific Destinations
+                if (type === 'Cube' || type === 'Octahedron') {
+                    finalName = "Cuboctahedron";
+                    verts = 12; // Correct
+                    faces = 14; 
+                    // Manual Geometry (v3 logic)
+                    const v = [1,0,1, 1,0,-1, -1,0,1, -1,0,-1, 1,1,0, 1,-1,0, -1,1,0, -1,-1,0, 0,1,1, 0,1,-1, 0,-1,1, 0,-1,-1];
+                    const ind = [0,4,8, 2,8,6, 3,6,9, 1,9,5, 0,10,5, 2,7,10, 3,11,7, 1,4,11, 0,8,2, 0,2,10, 2,6,3, 2,3,7, 3,9,1, 3,1,11, 1,5,0, 1,0,4, 4,5,9, 4,9,8, 6,7,11, 6,11,10];
+                    finalGeo = new THREE.PolyhedronGeometry(v, ind, 1.8, 0);
+                } 
+                else if (type === 'Icosahedron' || type === 'Dodecahedron') {
+                    finalName = "Icosidodecahedron";
+                    verts = 30; faces = 32;
+                    finalGeo = new THREE.IcosahedronGeometry(1.5, 1); // Proxy Visual
+                }
+                else {
+                    finalName = "Truncated " + type;
+                    faces = faces + verts; // Formula holds
+                    finalGeo = new THREE.TetrahedronGeometry(1.4, 1); // Proxy
+                }
+            }
+            // --- TRANSITION STATE ---
+            else {
+                // Calculate percentage
+                const pct = Math.round((t / 0.5) * 100);
+                finalName = `Transition (${pct}%)`;
+                
+                // Math for intermediate faces: Same as truncated (Corners are now faces)
+                faces = faces + verts;
+                // Verts: During truncation, 1 corner becomes 3 vertices (for cube). So Verts = Old_Verts * 3.
+                verts = verts * 3; 
+
+                // Visual: Scale down slightly to imply cutting
+                const scale = 1.0 - (t * 0.5);
+                
+                if (type === 'Cube') finalGeo = new THREE.BoxGeometry(2*scale, 2*scale, 2*scale);
+                else if (type === 'Octahedron') finalGeo = new THREE.OctahedronGeometry(1.5*scale, 0);
+                else if (type === 'Icosahedron') finalGeo = new THREE.IcosahedronGeometry(1.5*scale, 0);
+                else if (type === 'Dodecahedron') finalGeo = new THREE.DodecahedronGeometry(1.5*scale, 0);
+                else finalGeo = new THREE.TetrahedronGeometry(1.5*scale, 0);
+            }
+
+            return { geo: finalGeo, name: finalName, faces: faces, verts: verts, perfect: isPerfect };
+        }
+
+        function updateGeometry() {
+            if (mesh) { scene.remove(mesh); scene.remove(edges); }
+
+            const type = document.getElementById('seedSelect').value;
+            const t = parseFloat(document.getElementById('paramTrunc').value);
+            
+            document.getElementById('valTrunc').innerText = t.toFixed(2);
+
+            const res = generateProcedural(type, t);
+            
+            const mat = new THREE.MeshPhysicalMaterial({ color: 0x111111, metalness: 0.2, roughness: 0.1, transparent: true, opacity: 0.9, flatShading: true, polygonOffset: true, polygonOffsetFactor: 1 });
+            mesh = new THREE.Mesh(res.geo, mat);
+            
+            const edgeGeo = new THREE.EdgesGeometry(res.geo, 20); 
+            edges = new THREE.LineSegments(edgeGeo, new THREE.LineBasicMaterial({ color: 0x00e5ff }));
+
+            scene.add(mesh); scene.add(edges);
+
+            // Update UI
+            const nameEl = document.getElementById('dispName');
+            nameEl.innerText = res.name;
+            nameEl.className = res.perfect ? "status-perfect" : "status-trans";
+            
+            document.getElementById('dispVerts').innerText = res.verts;
+            document.getElementById('dispFaces').innerText = res.faces;
+        }
+
+        function animate() { requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera); }
+        window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
+        
+        updateGeometry();
+        animate();
+
+    </script>
+</body>
+</html>

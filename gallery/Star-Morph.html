@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Architectural Intelligence | 3D Morph</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #050510; font-family: 'Helvetica Neue', Arial, sans-serif; }
+        canvas { display: block; }
+        
+        /* TEXT OVERLAY */
+        .overlay {
+            position: absolute; bottom: 30px; left: 30px;
+            color: #fff; pointer-events: none;
+        }
+        .overlay h1 {
+            font-size: 14px; letter-spacing: 2px; text-transform: uppercase;
+            margin: 0 0 5px 0; color: #00ffff;
+        }
+        .overlay p {
+            font-size: 10px; color: #8899aa; margin: 0; max-width: 300px; line-height: 1.4;
+        }
+
+        /* WATERMARK (Top Right) */
+        .watermark {
+            position: absolute; top: 30px; right: 30px;
+            text-align: right;
+        }
+        .watermark strong {
+            display: block; color: #fff; font-size: 12px; letter-spacing: 1px;
+        }
+        .watermark span {
+            font-size: 10px; color: #666;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+    <div class="overlay">
+        <h1>Architectural Intelligence</h1>
+        <p>PARAMETRIC MORPHOLOGY v1.0<br>From simple solids to complex stellation.</p>
+    </div>
+
+    <div class="watermark">
+        <strong id="client-name">FOR CLIENT</strong>
+        <span>DAVID HUGHES ARCHITECTS</span>
+    </div>
+
+    <script>
+        // --- 1. SETUP ---
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x050510, 0.035); // Depth fog for atmosphere
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 4;
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.body.appendChild(renderer.domElement);
+
+        // --- 2. LIGHTING ---
+        // Ambient light for base visibility
+        const ambientLight = new THREE.AmbientLight(0x404040, 2);
+        scene.add(ambientLight);
+
+        // Colored lights to accentuate the "facets"
+        const pointLight1 = new THREE.PointLight(0x00ffff, 1, 10);
+        pointLight1.position.set(2, 2, 2);
+        scene.add(pointLight1);
+
+        const pointLight2 = new THREE.PointLight(0xff00ff, 1, 10);
+        pointLight2.position.set(-2, -2, 2);
+        scene.add(pointLight2);
+
+        // --- 3. THE "SPIKEY" GEOMETRY ---
+        // We use an Icosahedron with detail = 1 (more vertices to play with)
+        const geometry = new THREE.IcosahedronGeometry(1, 1);
+        
+        // Store original positions to reference later for the morphing calculation
+        const originalPositions = [];
+        const positionAttribute = geometry.attributes.position;
+        for (let i = 0; i < positionAttribute.count; i++) {
+            originalPositions.push(
+                new THREE.Vector3().fromBufferAttribute(positionAttribute, i)
+            );
+        }
+
+        // Create Materials
+        // Solid core: Metallic and shiny
+        const materialSolid = new THREE.MeshStandardMaterial({ 
+            color: 0x112233, 
+            roughness: 0.2, 
+            metalness: 0.8,
+            flatShading: true 
+        });
+        
+        // Wireframe overlay: Glowing cyan net
+        const materialWire = new THREE.MeshBasicMaterial({ 
+            color: 0x00ffff, 
+            wireframe: true, 
+            transparent: true, 
+            opacity: 0.3 
+        });
+
+        const mesh = new THREE.Mesh(geometry, materialSolid);
+        const wireMesh = new THREE.Mesh(geometry, materialWire);
+        
+        // Group them to rotate together
+        const group = new THREE.Group();
+        group.add(mesh);
+        group.add(wireMesh);
+        scene.add(group);
+
+        // --- 4. ANIMATION LOGIC ---
+        let time = 0;
+
+        // PERSONALIZATION (Legacy support for URL params e.g. ?to=Richard)
+        const urlParams = new URLSearchParams(window.location.search);
+        const toName = urlParams.get('to');
+        if (toName) {
+            document.getElementById('client-name').innerHTML = "FOR " + toName.toUpperCase();
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            time += 0.015;
+
+            // Rotate the whole shape
+            group.rotation.x += 0.003;
+            group.rotation.y += 0.005;
+
+            // MORPHING LOGIC
+            // We oscillate a "spike factor" based on time
+            const spikeFactor = (Math.sin(time) + 1.2) * 0.8; // Ranges from roughly 0.2 to 1.8
+
+            const positions = geometry.attributes.position;
+
+            for (let i = 0; i < positions.count; i++) {
+                const original = originalPositions[i];
+                const vector = original.clone();
+
+                // The "Wolfram" trick: 
+                // We use the vertex index (i) to create a pattern.
+                // Every 3rd vertex is pushed outward, others are pulled inward.
+                
+                let scale = 1;
+                if (i % 3 === 0) {
+                    scale = 1 + spikeFactor; // Grow outward (The Star)
+                } else if (i % 3 === 1) {
+                    scale = 1 - (spikeFactor * 0.2); // Shrink slightly inward (The Core)
+                } else {
+                    scale = 1; // Stay stable
+                }
+
+                vector.multiplyScalar(scale);
+                positions.setXYZ(i, vector.x, vector.y, vector.z);
+            }
+
+            geometry.attributes.position.needsUpdate = true; // Tell Three.js to update the shape
+            geometry.computeVertexNormals(); // Recalculate lighting shadows
+            
+            renderer.render(scene, camera);
+        }
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

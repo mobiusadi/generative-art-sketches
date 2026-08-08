@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Architectural Intelligence</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.1.0/dist/tweakpane.min.js"></script>
+
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
+        canvas { display: block; width: 100%; height: 100%; }
+        
+        /* UI OVERLAY */
+        .hud { position: absolute; top: 2rem; left: 2rem; pointer-events: none; z-index: 10; font-family: sans-serif; }
+        h1 { margin: 0; font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: #666; }
+        h2 { margin: 5px 0 0 0; font-size: 24px; font-weight: 700; color: #fff; }
+
+        /* MATERIAL TRAY */
+        #tray {
+            position: absolute; bottom: 0; left: 0; width: 100%; height: 120px;
+            background: rgba(0,0,0,0.8); border-top: 1px solid #333;
+            display: flex; align-items: center; gap: 10px; padding: 0 20px;
+            overflow-x: auto; z-index: 10;
+        }
+        
+        /* CARDS (Now handling both DIVs and Links) */
+        .card {
+            min-width: 100px; height: 70px; background: #222; border: 1px solid #444;
+            display: flex; align-items: flex-end; cursor: pointer; transition: 0.2s;
+            text-decoration: none; /* Removes underline from links */
+        }
+        .card:hover { border-color: #fff; transform: translateY(-2px); }
+        .card.active { border-color: #0088ff; background: #111; }
+        
+        .label {
+            width: 100%; font-size: 9px; color: #ccc; background: rgba(0,0,0,0.7);
+            padding: 4px; text-transform: uppercase; font-family: sans-serif;
+        }
+
+        /* DEBUG MESSAGE */
+        #debug {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: lime; font-family: monospace; font-size: 14px; background: rgba(0,0,0,0.8); padding: 20px;
+            z-index: 0; pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="hud">
+        <h1>Architectural Intelligence</h1>
+        <h2>Ashlar Grain</h2>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <div id="tray">
+        <div class="card active">
+            <div class="label">Ashlar Grain</div>
+        </div>
+
+        <a href="joy.html" class="card">
+            <div class="label">Joy Division</div>
+        </a>
+
+        <a href="torus.html" class="card">
+            <div class="label">Torus Geometry</div>
+        </a>
+    </div>
+
+    <script>
+        // --- 1. SETUP ENGINE (Native Browser API) ---
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height;
+
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+        }
+        window.addEventListener('resize', resize);
+        resize(); // Trigger once
+
+        // --- 2. PARAMETERS ---
+        const params = {
+            rows: 2, 
+            minWidth: 50, maxWidth: 300, gap: 4, 
+            lineColor: '#0a0a0a', // Deep Black
+            palette: 'jet', 
+            speed: 1
+        };
+
+        // --- 3. INTERNAL DATA (Palettes & Math) ---
+        const PALETTES = {
+            jet: ['#00008F', '#00009F', '#0000AF', '#0000BF', '#0000CF', '#0000DF', '#0000EF', '#0000FF', '#0010FF', '#0020FF', '#0030FF', '#0040FF', '#0050FF', '#0060FF', '#0070FF', '#0080FF', '#008FFF', '#009FFF', '#00AFFF', '#00BFFF', '#00CFFF', '#00DFFF', '#00EFFF', '#00FFFF', '#10FFEF', '#20FFDF', '#30FFCF', '#40FFBF', '#50FFAF', '#60FF9F', '#70FF8F', '#80FF80', '#8FFF70', '#9FFF60', '#AFFF50', '#BFFF40', '#CFFF30', '#DFFF20', '#EFFF10', '#FFFF00', '#FFEF00', '#FFDF00', '#FFCF00', '#FFBF00', '#FFAF00', '#FF9F00', '#FF8F00', '#FF8000', '#FF7000', '#FF6000', '#FF5000', '#FF4000', '#FF3000', '#FF2000', '#FF1000', '#FF0000', '#EF0000', '#DF0000', '#CF0000', '#BF0000', '#AF0000', '#9F0000', '#8F0000', '#800000'],
+            salinity: ['#3C1802', '#482005', '#542908', '#61320B', '#6D3C0F', '#7A4612', '#865116', '#925C1A', '#9E681E', '#A97423', '#B48128', '#BF8D2E', '#C99A34', '#D3A73A', '#DDB541', '#E6C349', '#EED151', '#F5DF5A', '#FBEF65', '#FEFF71', '#FCFC7E', '#F6F68B', '#F0F097', '#EBEBA3', '#E6E6AE', '#E1E1B9', '#DDDFC4', '#D9DCCF', '#D5DADA', '#D2D7E4', '#CFD5EE', '#CDD3F8', '#CBD1FF', '#C7CEFF', '#C0CAFF', '#B8C5FF', '#AFBFFF', '#A5B9FF', '#9BB2FF', '#90ABFF', '#84A3FF', '#779BFF', '#6A92FF', '#5C89FF', '#4D80FF', '#3D76FF', '#2B6CFF', '#1660FF', '#0054FF', '#0046FA']
+        };
+
+        const MathUtils = {
+            map: (v, iMin, iMax, oMin, oMax) => ((v - iMin) / (iMax - iMin) * (oMax - oMin) + oMin),
+            pick: (arr) => arr[Math.floor(Math.random() * arr.length)]
+        };
+
+        // --- 4. THE ANIMATION LOOP ---
+        let time = 0;
+        let cursor = { x: 0, y: 0 };
+        
+        window.addEventListener('mousemove', e => {
+            cursor.x = e.clientX;
+            cursor.y = e.clientY;
+        });
+
+        function animate() {
+            requestAnimationFrame(animate);
+            time += params.speed * 0.01;
+
+            // 1. Clear Screen
+            ctx.fillStyle = params.lineColor;
+            ctx.fillRect(0, 0, width, height);
+
+            // 2. Setup Palette
+            let colors = PALETTES[params.palette.toLowerCase()];
+            if(!colors) colors = PALETTES['jet'];
+
+            const rowHeight = height / params.rows;
+
+            // 3. Draw Rows
+            for (let r = 0; r < params.rows; r++) {
+                const y = r * rowHeight;
+                let x = 0;
+                let loopIndex = 0;
+                
+                while (x < width) {
+                    loopIndex++;
+                    
+                    const noise = Math.sin(r * 50 + loopIndex * 0.8 + time * 0.1); 
+                    let w = MathUtils.map(noise, -1, 1, params.minWidth, params.maxWidth);
+                    
+                    w = Math.max(20, w); 
+                    if (x + w > width) w = width - x;
+
+                    const c1 = colors[loopIndex % colors.length];
+                    const c2 = colors[(loopIndex + 5) % colors.length];
+
+                    const rectW = w - params.gap;
+                    const rectH = rowHeight - params.gap;
+                    
+                    const centerX = x + w/2;
+                    const centerY = y + rowHeight/2;
+                    const dist = Math.sqrt(Math.pow(cursor.x - centerX, 2) + Math.pow(cursor.y - centerY, 2));
+                    
+                    let stop = MathUtils.map(dist, 0, 400, 1, 0);
+                    stop = Math.max(0, Math.min(1, stop));
+
+                    const grad = ctx.createLinearGradient(x, y, x + rectW, y);
+                    grad.addColorStop(0, c1);
+                    grad.addColorStop(stop, c2);
+
+                    ctx.fillStyle = grad;
+                    ctx.fillRect(x, y, rectW, rectH);
+
+                    x += w;
+                    
+                    if(loopIndex > 1000) break;
+                }
+            }
+        }
+
+        // --- 5. START ---
+        try {
+            const pane = new Tweakpane.Pane({ title: 'Controls' });
+            pane.addInput(params, 'rows', { min: 1, max: 20, step: 1 });
+            pane.addInput(params, 'palette', { options: { Jet: 'jet', Salinity: 'salinity' } });
+            pane.addInput(params, 'lineColor');
+            pane.addInput(params, 'speed', { min: 0, max: 10 });
+            
+            animate();
+        } catch(e) {
+            console.error(e);
+        }
+    </script>
+</body>
+</html>

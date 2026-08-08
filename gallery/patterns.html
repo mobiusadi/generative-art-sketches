@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Architectural Intelligence | Patterns</title>
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.1.0/dist/tweakpane.min.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
+        canvas { display: block; }
+        .home-btn {
+            position: fixed; top: 20px; left: 20px;
+            color: #fff; text-decoration: none; font-family: monospace;
+            font-size: 14px; z-index: 1000; border: 1px solid #fff; padding: 5px 10px; transition: 0.3s;
+            mix-blend-mode: difference; /* Ensures visible on any background */
+        }
+        .home-btn:hover { background: #fff; color: #000; }
+    </style>
+</head>
+<body>
+
+    <a href="index.html" class="home-btn">← Home</a>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height;
+
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // --- PARAMETERS ---
+        const params = {
+            // Grid
+            gridSize: 15,    // How many columns
+            spacing: 60,     // Pixel spacing
+            stagger: false,  // Offset rows?
+            
+            // Shape
+            sides: 36,       // 36 = Circle, 3 = Triangle
+            radius: 20,      // Hole size
+            rotation: 0,
+            
+            // The "Emerge" Effect
+            spread: 1.0,     // 0 = Center only, 1 = Full screen
+            
+            // Randomness
+            randomPoly: false, // Randomize sides?
+            
+            // Colors
+            baseGradient: 'salinity', // The "Hole" color
+            maskGradient: 'magma',    // The "Surface" color
+        };
+
+        // --- PALETTES ---
+        const PALETTES = {
+            magma: ['#000004', '#3B0F70', '#8F2275', '#F66F1C', '#FCFFB2'],
+            salinity: ['#3C1802', '#6D3C0F', '#DDB541', '#FEFF71', '#CFD5EE', '#4D80FF', '#0046FA'],
+            jet: ['#00008F', '#0000FF', '#00FFFF', '#FFFF00', '#FF0000', '#800000'],
+            mono: ['#111', '#555', '#999', '#eee']
+        };
+
+        // --- DRAWING HELPERS ---
+        
+        function getGradient(ctx, name, w, h) {
+            // Create a diagonal gradient across the screen
+            const grad = ctx.createLinearGradient(0, 0, w, h);
+            const colors = PALETTES[name] || PALETTES['magma'];
+            
+            colors.forEach((c, i) => {
+                grad.addColorStop(i / (colors.length - 1), c);
+            });
+            return grad;
+        }
+
+        function drawPolygon(ctx, x, y, radius, sides, rotation) {
+            ctx.beginPath();
+            for (let i = 0; i < sides; i++) {
+                // Calculate angle for each point
+                const theta = rotation + (i / sides) * Math.PI * 2;
+                const px = x + Math.cos(theta) * radius;
+                const py = y + Math.sin(theta) * radius;
+                
+                if (i === 0) ctx.moveTo(px, py);
+                else ctx.lineTo(px, py);
+            }
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        // --- RENDER LOOP ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // 1. Draw the BASE Layer (The "Inside" of the holes)
+            // We fill the entire screen with the Salinity gradient first
+            ctx.globalCompositeOperation = 'source-over'; // Default mode
+            ctx.fillStyle = getGradient(ctx, params.baseGradient, width, height);
+            ctx.fillRect(0, 0, width, height);
+
+            // 2. Prepare the TOP Layer (The Mask)
+            // We draw the Magma layer on a temporary setting
+            // We can't just draw rectangles, we need to draw the solid block 
+            // and then "erase" the holes.
+            
+            // Save state to restore later
+            ctx.save();
+            
+            // Step A: Draw the full Magma surface? 
+            // Actually, an easier trick in Canvas:
+            // 1. Draw the holes first using Normal mode.
+            // 2. Draw the Magma gradient using "source-out" (Draws background only where holes AREN'T).
+            // Let's try the "Destination-Out" method (Cookie Cutter)
+            
+            // Create a new layer for the mask
+            // We draw the mask on top of the base.
+            // But to punch holes, we need a fresh layer strategy or just draw the mask manually.
+            
+            // Let's restart the loop logic for visual clarity:
+            // LAYER 1: Salinity (Done)
+            // LAYER 2: Magma Surface with holes cut out.
+            
+            // We draw the Magma surface fully on top.
+            // Then we set composite mode to 'destination-out' and draw the shapes.
+            // This "erases" the Magma, revealing Salinity.
+            
+            ctx.fillStyle = getGradient(ctx, params.maskGradient, width, height);
+            ctx.fillRect(0, 0, width, height);
+            
+            // 3. CUT THE HOLES
+            ctx.globalCompositeOperation = 'destination-out'; // The "Eraser" mode
+            ctx.fillStyle = '#000'; // Color doesn't matter, alpha does
+
+            const cols = params.gridSize;
+            const rows = Math.ceil(height / params.spacing) + 2;
+            const offsetX = (width - (cols * params.spacing)) / 2;
+            const centerY = height / 2;
+            const centerX = width / 2;
+
+            for (let y = 0; y < rows; y++) {
+                for (let x = 0; x < cols; x++) {
+                    
+                    // Coordinates
+                    let px = offsetX + x * params.spacing;
+                    let py = y * params.spacing;
+
+                    // Stagger Logic
+                    if (params.stagger && y % 2 !== 0) {
+                        px += params.spacing / 2;
+                    }
+
+                    // "Emerge from Center" Logic
+                    // Calculate distance from center
+                    const dist = Math.sqrt(Math.pow(px - centerX, 2) + Math.pow(py - centerY, 2));
+                    const maxDist = (width / 2) * 1.5; // Max possible distance approx
+                    
+                    // Normalize distance (0 at center, 1 at edge)
+                    const distNorm = dist / maxDist;
+                    
+                    // If shape is outside the "Spread" slider, skip it or shrink it
+                    if (distNorm > params.spread) continue; 
+
+                    // Optional: Make them shrink at the edges of the spread
+                    let localRadius = params.radius;
+                    // Smooth edge fade
+                    if (distNorm > params.spread * 0.8) {
+                        const fade = (params.spread - distNorm) / (params.spread * 0.2);
+                        localRadius *= Math.max(0, fade);
+                    }
+
+                    // Random Polygon Logic
+                    // We create a pseudo-random seed based on x,y so it doesn't flicker
+                    const seed = (x * 123 + y * 456);
+                    let localSides = params.sides;
+                    if (params.randomPoly) {
+                        const variants = [3, 4, 6, 36]; // Tri, Square, Hex, Circle
+                        localSides = variants[seed % variants.length];
+                    }
+
+                    // Rotation Animation
+                    const localRot = params.rotation + (distNorm * 2); // Twist effect
+
+                    drawPolygon(ctx, px, py, localRadius, localSides, localRot);
+                }
+            }
+            
+            ctx.restore();
+        }
+
+        // --- CONTROLS ---
+        const pane = new Tweakpane.Pane({ title: 'Pattern Controls' });
+        
+        const f1 = pane.addFolder({ title: 'Grid & Layout' });
+        f1.addInput(params, 'gridSize', { min: 2, max: 50, step: 1, label: 'Density' });
+        f1.addInput(params, 'spacing', { min: 20, max: 200 });
+        f1.addInput(params, 'stagger');
+        f1.addInput(params, 'spread', { min: 0, max: 1.5, label: 'Expansion' });
+
+        const f2 = pane.addFolder({ title: 'Geometry' });
+        f2.addInput(params, 'radius', { min: 1, max: 100 });
+        f2.addInput(params, 'sides', { min: 3, max: 36, step: 1 });
+        f2.addInput(params, 'randomPoly', { label: 'Mix Shapes' });
+        f2.addInput(params, 'rotation', { min: 0, max: Math.PI * 2 });
+
+        const f3 = pane.addFolder({ title: 'Materials' });
+        f3.addInput(params, 'baseGradient', { options: { Salinity: 'salinity', Magma: 'magma', Jet: 'jet', Mono: 'mono' }, label: 'Hole Color' });
+        f3.addInput(params, 'maskGradient', { options: { Magma: 'magma', Salinity: 'salinity', Mono: 'mono' }, label: 'Surface Color' });
+
+        animate();
+    </script>
+</body>
+</html>

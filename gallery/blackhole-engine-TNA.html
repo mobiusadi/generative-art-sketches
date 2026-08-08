@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>TNA Solver | Master Edition</title>
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.1.0/dist/tweakpane.min.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background: #050505; font-family: monospace; }
+        #overlay { position: absolute; top: 20px; left: 20px; color: #00ffcc; pointer-events: none; border-left: 2px solid #00ffcc; padding-left: 10px; z-index: 10; }
+        #stats { position: absolute; bottom: 20px; left: 20px; color: #888; font-size: 11px; line-height: 1.6; }
+    </style>
+</head>
+<body>
+    <div id="overlay">
+        <div style="font-size: 10px; color: #666; letter-spacing: 2px;">STRUCTURAL EQUILIBRIUM</div>
+        <div style="font-size: 16px;">MASTER VAULT ANALYZER</div>
+    </div>
+    <div id="stats">
+        HEIGHT: <span id="val-height" style="color:#fff">0.00m</span> | 
+        THRUST: <span id="val-thrust" style="color:#fff">0.00kN</span>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        const params = {
+            width: 14.0, depth: 14.0, targetH: 6.0,
+            gridRes: 22, stiffness: 2.0, shiny: 60,
+            showQuads: true, isUpright: true
+        };
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(22, 18, 22);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        const mainLight = new THREE.PointLight(0x00ffcc, 150, 100);
+        mainLight.position.set(10, 25, 10);
+        scene.add(mainLight, new THREE.AmbientLight(0x333333));
+
+        const matSurface = new THREE.MeshPhongMaterial({ color: 0x111111, specular: 0x00ffcc, shininess: 60, side: THREE.DoubleSide });
+        const matQuads = new THREE.LineBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.7 });
+
+        let nodes = [], edges = [], thrustArrows = [];
+        const geom = new THREE.BufferGeometry();
+        const mesh = new THREE.Mesh(geom, matSurface);
+        const quadLines = new THREE.LineSegments(new THREE.BufferGeometry(), matQuads);
+        scene.add(mesh, quadLines);
+
+        function init() {
+            nodes = []; edges = [];
+            thrustArrows.forEach(a => scene.remove(a.helper));
+            thrustArrows = [];
+
+            const wSpace = params.width / (params.gridRes - 1);
+            const dSpace = params.depth / (params.gridRes - 1);
+
+            for (let i = 0; i < params.gridRes; i++) {
+                for (let j = 0; j < params.gridRes; j++) {
+                    const isFixed = (i === 0 && j === 0) || (i === 0 && j === params.gridRes - 1) || 
+                                    (i === params.gridRes - 1 && j === 0) || (i === params.gridRes - 1 && j === params.gridRes - 1);
+                    nodes.push({ pos: new THREE.Vector3(i * wSpace - params.width/2, 0, j * dSpace - params.depth/2), fixed: isFixed });
+                }
+            }
+
+            for (let i = 0; i < params.gridRes; i++) {
+                for (let j = 0; j < params.gridRes; j++) {
+                    const idx = i * params.gridRes + j;
+                    if (i < params.gridRes - 1) edges.push({ a: idx, b: (i + 1) * params.gridRes + j });
+                    if (j < params.gridRes - 1) edges.push({ a: idx, b: i * params.gridRes + (j + 1) });
+                }
+            }
+
+            nodes.forEach((n, i) => {
+                if(n.fixed) {
+                    const arrow = new THREE.ArrowHelper(new THREE.Vector3(0,1,0), n.pos, 1, 0xff0044);
+                    thrustArrows.push({ helper: arrow, nodeIdx: i });
+                    scene.add(arrow);
+                }
+            });
+        }
+
+        function solve() {
+            const nextY = nodes.map(n => n.pos.y);
+            let currentMaxH = 0.001;
+            for(let step=0; step<10; step++) {
+                nodes.forEach((node, i) => {
+                    if (node.fixed) return;
+                    let sumY = 0, count = 0;
+                    edges.forEach(edge => {
+                        if (edge.a === i) { sumY += nextY[edge.b]; count++; }
+                        if (edge.b === i) { sumY += nextY[edge.a]; count++; }
+                    });
+                    nextY[i] = (sumY / count) - (0.05 / params.stiffness);
+                });
+            }
+            nextY.forEach(y => { if(Math.abs(y) > currentMaxH) currentMaxH = Math.abs(y); });
+            const scale = params.targetH / currentMaxH;
+            const dir = params.isUpright ? 1 : -1;
+            nodes.forEach((n, i) => { if(!n.fixed) n.pos.y = Math.abs(nextY[i]) * scale * dir; });
+            document.getElementById('val-height').innerText = params.targetH.toFixed(2) + "m";
+            document.getElementById('val-thrust').innerText = (params.stiffness * 18.2).toFixed(1) + "kN";
+        }
+
+        function updateGraphics() {
+            const verts = [], indices = [], quadVerts = [];
+            nodes.forEach(n => verts.push(n.pos.x, n.pos.y, n.pos.z));
+            const res = params.gridRes;
+            for (let i = 0; i < res - 1; i++) {
+                for (let j = 0; j < res - 1; j++) {
+                    const a = i * res + j, b = (i + 1) * res + j, c = i * res + (j + 1), d = (i + 1) * res + (j + 1);
+                    indices.push(a, b, d, a, d, c);
+                    quadVerts.push(nodes[a].pos.x, nodes[a].pos.y, nodes[a].pos.z, nodes[b].pos.x, nodes[b].pos.y, nodes[b].pos.z);
+                    quadVerts.push(nodes[a].pos.x, nodes[a].pos.y, nodes[a].pos.z, nodes[c].pos.x, nodes[c].pos.y, nodes[c].pos.z);
+                    if (i === res - 2) quadVerts.push(nodes[b].pos.x, nodes[b].pos.y, nodes[b].pos.z, nodes[d].pos.x, nodes[d].pos.y, nodes[d].pos.z);
+                    if (j === res - 2) quadVerts.push(nodes[c].pos.x, nodes[c].pos.y, nodes[c].pos.z, nodes[d].pos.x, nodes[d].pos.y, nodes[d].pos.z);
+                }
+            }
+            geom.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+            geom.setIndex(indices);
+            geom.computeVertexNormals();
+            matSurface.shininess = params.shiny;
+            quadLines.geometry.setAttribute('position', new THREE.Float32BufferAttribute(quadVerts, 3));
+            quadLines.visible = params.showQuads;
+
+            thrustArrows.forEach(obj => {
+                let reaction = new THREE.Vector3(0,0,0);
+                edges.forEach(e => {
+                    if(e.a === obj.nodeIdx || e.b === obj.nodeIdx) {
+                        const other = nodes[e.a === obj.nodeIdx ? e.b : e.a];
+                        reaction.add(new THREE.Vector3().subVectors(nodes[obj.nodeIdx].pos, other.pos));
+                    }
+                });
+                obj.helper.setDirection(reaction.clone().normalize());
+                obj.helper.setLength(reaction.length() * 2.5);
+            });
+        }
+
+        const pane = new Tweakpane.Pane({ title: 'Master Controls' });
+        pane.addInput(params, 'gridRes', { min: 8, max: 40, step: 1, label: 'Resolution' }).on('change', init);
+        pane.addInput(params, 'targetH', { min: 1, max: 15, label: 'Peak Height' });
+        pane.addInput(params, 'stiffness', { min: 0.1, max: 8, label: 'Thrust Density' });
+        pane.addInput(params, 'shiny', { min: 0, max: 100 });
+        pane.addSeparator();
+        pane.addInput(params, 'showQuads', { label: 'Show Quad Mesh' });
+        pane.addInput(params, 'isUpright', { label: 'Upright Mode' });
+
+        init();
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update(); solve(); updateGraphics();
+            renderer.render(scene, camera);
+        }
+        animate();
+    </script>
+</body>
+</html>

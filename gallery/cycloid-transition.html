@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Architectural Intelligence | The Cycloid</title>
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.1.0/dist/tweakpane.min.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #111; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <script type="module">
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        const params = {
+            radius: 60,         
+            penOffset: 1.0,     // Target offset (controlled by slider)
+            orientation: 'Convex (Arch)', 
+            speed: 0.5,         // Slower start speed
+            paused: false,
+            color: '#00ffff',
+            showWheel: true,
+            showGhost: true
+        };
+
+        // Internal state for smooth morphing
+        let currentPenOffset = 1.0; 
+        let width, height;
+        let angle = 0;          
+        let trace = [];         
+
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+            // Note: We DO NOT clear trace on resize anymore, to preserve history
+            // But we might need to re-center if window changes drastically. 
+            // For now, let's keep it simple.
+        }
+        window.addEventListener('resize', resize);
+
+        function draw() {
+            // Clear
+            ctx.fillStyle = '#111';
+            ctx.fillRect(0, 0, width, height);
+
+            // Baseline
+            const baseLineY = height / 2;
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(0, baseLineY);
+            ctx.lineTo(width, baseLineY);
+            ctx.stroke();
+
+            // --- PHYSICS & MORPHING ---
+            
+            if (!params.paused) {
+                angle += params.speed * 0.05;
+                
+                // Smooth Tweening: Move 'current' towards 'target'
+                // This makes the slider changes feel organic
+                const lerpSpeed = 0.05;
+                currentPenOffset += (params.penOffset - currentPenOffset) * lerpSpeed;
+            }
+
+            const isArch = params.orientation === 'Convex (Arch)';
+            const wheelX = params.radius * angle;
+            const wheelY = isArch ? (baseLineY - params.radius) : (baseLineY + params.radius);
+
+            // Camera Tracking (Right Aligned)
+            const targetScreenX = width * 0.8;
+            const cameraX = wheelX - targetScreenX; 
+
+            // Pen Position using the SMOOTH offset
+            const rotation = isArch ? angle : -angle;
+            
+            const localX = Math.sin(rotation) * (params.radius * currentPenOffset);
+            const localY = Math.cos(rotation) * (params.radius * currentPenOffset);
+            
+            const penX = wheelX - localX; 
+            const penY = wheelY - localY; 
+
+            // Trace Logic (Only add point if not paused or if morphing happened)
+            // Actually, we should only add points if the wheel moved OR pen moved significantly
+            if (!params.paused || Math.abs(currentPenOffset - params.penOffset) > 0.01) {
+                 if (trace.length === 0 || Math.hypot(trace[trace.length-1].x - penX, trace[trace.length-1].y - penY) > 2) {
+                    trace.push({ x: penX, y: penY });
+                }
+            }
+
+            // --- DRAWING ---
+            ctx.save();
+            ctx.translate(-cameraX, 0); 
+
+            // 1. Trace
+            if (trace.length > 1) {
+                ctx.strokeStyle = params.color;
+                ctx.lineWidth = 3;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = params.color;
+                
+                ctx.beginPath();
+                // Cull off-screen points
+                let startIndex = 0;
+                for(let i=trace.length-1; i>=0; i--) {
+                    if (trace[i].x < cameraX - 100) {
+                        startIndex = i;
+                        break;
+                    }
+                }
+                
+                ctx.moveTo(trace[startIndex].x, trace[startIndex].y);
+                for (let i = startIndex + 1; i < trace.length; i++) {
+                    ctx.lineTo(trace[i].x, trace[i].y);
+                }
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+            }
+
+            // 2. Mechanism
+            if (params.showWheel) {
+                // Ghosts
+                if (params.showGhost) {
+                     ctx.strokeStyle = '#222';
+                     ctx.lineWidth = 1;
+                     const circumference = Math.PI * 2 * params.radius;
+                     const startGhost = Math.floor(cameraX / circumference) * circumference;
+                     for(let gx = startGhost; gx < wheelX; gx += circumference) {
+                         ctx.beginPath();
+                         ctx.arc(gx, wheelY, params.radius, 0, Math.PI*2);
+                         ctx.stroke();
+                     }
+                }
+
+                // Wheel
+                ctx.strokeStyle = '#666';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(wheelX, wheelY, params.radius, 0, Math.PI * 2);
+                ctx.stroke();
+
+                // Spoke (Visualizing the Radius Arm)
+                ctx.strokeStyle = '#888';
+                ctx.beginPath();
+                ctx.moveTo(wheelX, wheelY);
+                ctx.lineTo(penX, penY);
+                ctx.stroke();
+
+                // Pen Dot
+                ctx.fillStyle = '#ff0000';
+                ctx.beginPath();
+                ctx.arc(penX, penY, 5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            ctx.restore();
+            requestAnimationFrame(draw);
+        }
+
+        // --- UI ---
+        const pane = new Tweakpane.Pane({ title: 'The Cycloid Engine' });
+        
+        pane.addInput(params, 'radius', { min: 20, max: 150, label: 'Wheel Size' }).on('change', () => { 
+            // Only clear trace on radius change, as that breaks continuity
+            trace=[]; angle=0; 
+        });
+        
+        pane.addInput(params, 'orientation', { 
+            options: { 'Convex (Arch)': 'Convex (Arch)', 'Concave (Valley)': 'Concave (Valley)' } 
+        }).on('change', () => { trace=[]; angle=0; });
+
+        // NOTE: We removed the .on('change', clear) from here!
+        pane.addInput(params, 'penOffset', { min: 0.1, max: 2.0, label: 'Pen Position' });
+        
+        pane.addSeparator();
+        
+        const fPlayback = pane.addFolder({ title: 'Playback' });
+        fPlayback.addInput(params, 'paused', { label: 'Pause' });
+        fPlayback.addInput(params, 'speed', { min: 0, max: 5, label: 'Speed' });
+        
+        const fVis = pane.addFolder({ title: 'Visuals' });
+        fVis.addInput(params, 'color', { label: 'Ink Color' });
+        fVis.addInput(params, 'showWheel', { label: 'Show Mech' });
+        fVis.addInput(params, 'showGhost', { label: 'Show Grid' });
+        
+        fVis.addButton({ title: 'Clear Trace' }).on('click', () => { trace = []; angle = 0; });
+        fVis.addButton({ title: 'Download Image' }).on('click', () => {
+             const link = document.createElement('a');
+             link.download = 'cycloid-morph.png';
+             link.href = canvas.toDataURL();
+             link.click();
+        });
+
+        resize();
+        draw();
+
+    </script>
+</body>
+</html>

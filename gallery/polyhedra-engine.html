@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Architectural Intelligence | Master Index v3</title>
+    <style>
+        :root {
+            --bg: #050505;
+            --panel: #111;
+            --text: #eee;
+            --dim: #666;
+            --accent: #00ffff;
+            --accent-dim: rgba(0, 255, 255, 0.05);
+            --border: #333;
+        }
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Courier New', monospace;
+            margin: 0;
+            padding: 40px;
+        }
+        
+        header {
+            max-width: 1200px;
+            margin: 0 auto 40px auto;
+            border-bottom: 2px solid var(--accent);
+            padding-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+        }
+        h1 {
+            font-size: 28px;
+            text-transform: uppercase;
+            letter-spacing: 4px;
+            margin: 0;
+            color: var(--accent);
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
+        }
+        .subtitle { font-size: 12px; color: var(--dim); margin-bottom: 5px; }
+
+        input#search {
+            width: 300px;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            color: var(--accent);
+            padding: 10px;
+            font-family: inherit;
+            font-size: 14px;
+            outline: none;
+        }
+        input#search:focus { border-color: var(--accent); }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 15px;
+        }
+
+        .category {
+            grid-column: 1 / -1;
+            margin-top: 40px;
+            margin-bottom: 15px;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 5px;
+            color: #fff;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-size: 14px;
+        }
+
+        .file-link {
+            display: block;
+            background: var(--panel);
+            padding: 15px;
+            text-decoration: none;
+            color: var(--dim);
+            border: 1px solid var(--border);
+            transition: all 0.2s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        .file-link:hover {
+            border-color: var(--accent);
+            background: var(--accent-dim);
+            color: #fff;
+        }
+        .file-link .name {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: var(--text);
+            font-size: 14px;
+        }
+        .file-link .meta {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .tag {
+            position: absolute;
+            top: 15px; right: 15px;
+            font-size: 9px;
+            background: #222;
+            padding: 3px 6px;
+            border-radius: 2px;
+            color: var(--accent);
+        }
+
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div>
+            <div class="subtitle">SYSTEM DASHBOARD</div>
+            <h1>Architectural Intelligence</h1>
+        </div>
+        <input type="text" id="search" placeholder="SEARCH PROTOCOLS..." onkeyup="filterList()">
+    </header>
+
+    <div class="container" id="file-list">
+        
+        <div class="category">01 // Geometric Engines</div>
+        
+        <a href="golden-ratio-v5.html" class="file-link">
+            <span class="tag">v5</span>
+            <span class="name">The Golden Ratio</span>
+            <span class="meta">Visual Proof & Spirals</span>
+        </a>
+        <a href="polyhedra-engine.html" class="file-link">
+            <span class="tag">v2.2</span>
+            <span class="name">Polyhedra Engine</span>
+            <span class="meta">Platonic Relationships</span>
+        </a>
+        <a href="geodesic-engine.html" class="file-link">
+            <span class="tag">v1</span>
+            <span class="name">Geodesic Engine</span>
+            <span class="meta">Dome Subdivision</span>
+        </a>
+        <a href="sunflower-engine-v1.html" class="file-link">
+            <span class="tag">v1</span>
+            <span class="name">Phyllotaxis Engine</span>
+            <span class="meta">Nature's Packing Algorithm</span>
+        </a>
+        <a href="penrose-engine.html" class="file-link">
+            <span class="tag">v2</span>
+            <span class="name">Penrose Engine</span>
+            <span class="meta">Aperiodic Tiling</span>
+        </a>
+        <a href="polar-engine-v5.html" class="file-link">
+            <span class="tag">v5</span>
+            <span class="name">Polar Engine</span>
+            <span class="meta">Superformula Plotter</span>
+        </a>
+        <a href="Menger-Sponge-v3.html" class="file-link">
+            <span class="tag">v3</span>
+            <span class="name">Menger Sponge</span>
+            <span class="meta">Fractal Geometry</span>
+        </a>
+
+        <div class="category">02 // Physics & Exotic</div>
+
+        <a href="DNA.html" class="file-link">
+            <span class="tag">v1</span>
+            <span class="name">Helix Engine</span>
+            <span class="meta">DNA Geometry (34/21)</span>
+        </a>
+        <a href="blackhole-engine.html" class="file-link">
+            <span class="tag">v1</span>
+            <span class="name">Singularity Engine</span>
+            <span class="meta">Black Hole Metric</span>
+        </a>
+        <a href="air-leakage-v7.html" class="file-link">
+            <span class="tag">v7</span>
+            <span class="name">CFD Engine</span>
+            <span class="meta">Airflow Simulation</span>
+        </a>
+        <a href="murmuration-3d-v2.html" class="file-link">
+            <span class="tag">v2</span>
+            <span class="name">Swarm Engine</span>
+            <span class="meta">Boids / Murmuration</span>
+        </a>
+        <a href="flow.html" class="file-link">
+            <span class="tag">v1</span>
+            <span class="name">Flow Engine</span>
+            <span class="meta">Fluid Dynamics</span>
+        </a>
+
+        <div class="category">03 // Architecture</div>
+
+        <a href="senate-5.html" class="file-link">
+            <span class="tag">v5</span>
+            <span class="name">Senate Engine</span>
+            <span class="meta">Amphitheater Layout</span>
+        </a>
+        <a href="elipse-panel-engine-v5.html" class="file-link">
+            <span class="tag">v5</span>
+            <span class="name">Panel Engine 2D</span>
+            <span class="meta">Elliptical Cladding</span>
+        </a>
+        <a href="kinetic-fold-v4.html" class="file-link">
+            <span class="tag">v4</span>
+            <span class="name">Kinetic Engine</span>
+            <span class="meta">Folding Facades</span>
+        </a>
+        <a href="weare-phelan-v3.html" class="file-link">
+            <span class="tag">v3</span>
+            <span class="name">Foam Engine</span>
+            <span class="meta">Weaire-Phelan Structure</span>
+        </a>
+        <a href="origami-engine-v3.html" class="file-link">
+            <span class="tag">v3</span>
+            <span class="name">Origami Engine</span>
+            <span class="meta">Tessellated Folding</span>
+        </a>
+        <a href="tower.html" class="file-link">
+            <span class="tag">v1</span>
+            <span class="name">Tower Gen</span>
+            <span class="meta">Parametric Highrise</span>
+        </a>
+
+        <div class="category">04 // Pure Math</div>
+
+        <a href="roulette-engine-v2.html" class="file-link">
+            <span class="tag">v2</span>
+            <span class="name">Roulette Engine</span>
+            <span class="meta">Cycloids & Epicycloids</span>
+        </a>
+        <a href="hyberbolic-engine-v4.html" class="file-link">
+            <span class="tag">v4</span>
+            <span class="name">Hyperbolic Engine</span>
+            <span class="meta">Non-Euclidean Space</span>
+        </a>
+        <a href="parabolic-engine-v2.html" class="file-link">
+            <span class="tag">v2</span>
+            <span class="name">Parabolic Engine</span>
+            <span class="meta">Focus & Directrix</span>
+        </a>
+        <a href="Chaos-gasket-v2.html" class="file-link">
+            <span class="tag">v2</span>
+            <span class="name">Chaos Engine</span>
+            <span class="meta">Sierpinski Gasket</span>
+        </a>
+        <a href="voronoi.html" class="file-link">
+            <span class="tag">v1</span>
+            <span class="name">Voronoi Engine</span>
+            <span class="meta">Cellular Tessellation</span>
+        </a>
+
+    </div>
+
+    <script>
+        function filterList() {
+            const input = document.getElementById('search');
+            const filter = input.value.toUpperCase();
+            const container = document.getElementById('file-list');
+            const links = container.getElementsByTagName('a');
+
+            for (let i = 0; i < links.length; i++) {
+                const name = links[i].getElementsByClassName('name')[0].innerText;
+                const meta = links[i].getElementsByClassName('meta')[0].innerText;
+                const combined = name + " " + meta;
+                
+                if (combined.toUpperCase().indexOf(filter) > -1) {
+                    links[i].classList.remove('hidden');
+                } else {
+                    links[i].classList.add('hidden');
+                }
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Architectural Intelligence | Liquid Swarm</title>
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.1.0/dist/tweakpane.min.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #050505; font-family: 'Helvetica Neue', Arial, sans-serif; }
+        canvas { display: block; }
+        .watermark {
+            position: absolute; bottom: 20px; left: 20px;
+            pointer-events: none; user-select: none;
+        }
+        .watermark h1 { color: #fff; font-size: 14px; letter-spacing: 2px; margin: 0; text-transform: uppercase; }
+        .watermark p { color: #556677; font-size: 11px; margin: 4px 0 0 0; }
+    </style>
+</head>
+<body>
+    <div class="watermark">
+        <h1>Architectural Intelligence</h1>
+        <p>SYSTEM BEHAVIOR: FLUID DYNAMICS v2.0</p>
+    </div>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let width, height;
+        let boids = [];
+
+        // PARAMETERS
+        const params = {
+            count: 500,
+            perception: 60,
+            align: 1.0,
+            cohesion: 0.8,   // Lowered for smoother turns
+            separation: 1.5, // Higher to prevent jittery crashing
+            speed: 2.5,      // Slower speed = less strobe
+            trails: 0.15,    // The magic "Motion Blur" setting (0 to 1)
+            color: '#00ffff'
+        };
+
+        class Boid {
+            constructor() {
+                this.position = { x: Math.random() * window.innerWidth, y: Math.random() * window.innerHeight };
+                this.velocity = { x: (Math.random()-0.5)*params.speed, y: (Math.random()-0.5)*params.speed };
+                this.acceleration = { x: 0, y: 0 };
+            }
+
+            edges() {
+                if (this.position.x > width) this.position.x = 0;
+                else if (this.position.x < 0) this.position.x = width;
+                if (this.position.y > height) this.position.y = 0;
+                else if (this.position.y < 0) this.position.y = height;
+            }
+
+            flock(boids) {
+                let align = {x:0, y:0}, coh = {x:0, y:0}, sep = {x:0, y:0};
+                let total = 0;
+                
+                for (let other of boids) {
+                    let d = Math.hypot(this.position.x - other.position.x, this.position.y - other.position.y);
+                    if (other !== this && d < params.perception) {
+                        align.x += other.velocity.x; align.y += other.velocity.y;
+                        coh.x += other.position.x; coh.y += other.position.y;
+                        sep.x += (this.position.x - other.position.x) / (d*d); // Inverse square for smoother separation
+                        sep.y += (this.position.y - other.position.y) / (d*d);
+                        total++;
+                    }
+                }
+
+                if (total > 0) {
+                    // Steer towards averages
+                    // (Simplified steering logic for brevity/performance)
+                    align.x /= total; align.y /= total;
+                    align.x = (align.x - this.velocity.x) * 0.05; // 0.05 = Steering Force (Lower is smoother)
+                    align.y = (align.y - this.velocity.y) * 0.05;
+
+                    coh.x /= total; coh.y /= total;
+                    coh.x = (coh.x - this.position.x - this.velocity.x) * 0.05;
+                    coh.y = (coh.y - this.position.y - this.velocity.y) * 0.05;
+
+                    sep.x *= 20; sep.y *= 20; // Scale up separation
+                }
+
+                this.acceleration.x += align.x * params.align + coh.x * params.cohesion + sep.x * params.separation;
+                this.acceleration.y += align.y * params.align + coh.y * params.cohesion + sep.y * params.separation;
+            }
+
+            update() {
+                this.position.x += this.velocity.x;
+                this.position.y += this.velocity.y;
+                this.velocity.x += this.acceleration.x;
+                this.velocity.y += this.acceleration.y;
+
+                // Soft Speed Limit
+                let speed = Math.hypot(this.velocity.x, this.velocity.y);
+                if (speed > params.speed) {
+                    this.velocity.x = (this.velocity.x / speed) * params.speed;
+                    this.velocity.y = (this.velocity.y / speed) * params.speed;
+                }
+                this.acceleration.x = 0; this.acceleration.y = 0;
+            }
+
+            draw() {
+                ctx.fillStyle = params.color;
+                ctx.beginPath();
+                ctx.arc(this.position.x, this.position.y, 2, 0, Math.PI * 2); // Circles are smoother than triangles
+                ctx.fill();
+            }
+        }
+
+        function init() {
+            width = window.innerWidth; height = window.innerHeight;
+            canvas.width = width; canvas.height = height;
+            boids = [];
+            for (let i=0; i<params.count; i++) boids.push(new Boid());
+        }
+
+        function animate() {
+            // THE TRICK: Don't clear rect. Fill with semi-transparent black.
+            // This creates the "Trails" effect.
+            ctx.fillStyle = `rgba(5, 5, 10, ${params.trails})`; 
+            ctx.fillRect(0, 0, width, height);
+
+            for (let boid of boids) {
+                boid.edges();
+                boid.flock(boids);
+                boid.update();
+                boid.draw();
+            }
+            requestAnimationFrame(animate);
+        }
+
+        // Setup Controls
+        const pane = new Tweakpane.Pane({ title: 'Swarm Controls' });
+        pane.addInput(params, 'trails', { min: 0.05, max: 1.0, label: 'Flow/Trails' }); // Lower = longer trails
+        pane.addInput(params, 'speed', { min: 1, max: 10 });
+        pane.addInput(params, 'align', { min: 0, max: 3 });
+        pane.addInput(params, 'cohesion', { min: 0, max: 3 });
+        pane.addInput(params, 'separation', { min: 0, max: 3 });
+        
+        window.addEventListener('resize', init);
+        init(); animate();
+    </script>
+</body>
+</html>

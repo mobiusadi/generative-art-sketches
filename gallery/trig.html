@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Architectural Intelligence | Omni-Trig Engine</title>
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.1.0/dist/tweakpane.min.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #111; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <script type="module">
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        const params = {
+            radius: 80,
+            speed: 0.5,
+            paused: false,
+            
+            // Primary
+            showSin: true,
+            showCos: true,
+            showTan: false,
+            
+            // Reciprocal
+            showSec: false,
+            showCsc: false,
+            showCot: false,
+
+            showComponents: true, 
+            lineWidth: 2
+        };
+
+        let width, height;
+        let angle = 0;
+        let trail = []; 
+
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+        }
+        window.addEventListener('resize', resize);
+
+        function draw() {
+            ctx.fillStyle = '#111';
+            ctx.fillRect(0, 0, width, height);
+
+            const cx = width * 0.2; 
+            const cy = height / 2;
+            const graphX = width * 0.35; 
+            const scaleY = params.radius;
+            
+            // --- PHYSICS ---
+            if (!params.paused) {
+                angle -= params.speed * 0.03; 
+            }
+
+            // Calculate All 6 Functions
+            // Note: Visual Angle vs Math Angle logic again. 
+            // We use standard Math.sin/cos.
+            const s = Math.sin(angle);
+            const c = Math.cos(angle);
+            
+            // Guard against division by zero for reciprocals
+            const t = c !== 0 ? s/c : (s > 0 ? 100 : -100);
+            const sec = c !== 0 ? 1/c : (c > 0 ? 100 : -100);
+            const csc = s !== 0 ? 1/s : (s > 0 ? 100 : -100);
+            const cot = s !== 0 ? c/s : (c > 0 ? 100 : -100);
+
+            // Circle Point Position
+            // We flip Y for visual "Up is Up" logic
+            const px = cx + c * params.radius;
+            const visualPy = cy - s * params.radius; 
+
+            // Update Trail
+            // Only add points if not paused to prevent "stacking"
+            if (!params.paused) {
+                trail.unshift({ sin: s, cos: c, tan: t, sec: sec, csc: csc, cot: cot });
+                if (trail.length > (width - graphX)) {
+                    trail.pop();
+                }
+            }
+
+            // --- DRAWING: THE MECHANISM (Unit Circle) ---
+            
+            // 1. Circle & Axes
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = '#444';
+            ctx.beginPath();
+            ctx.arc(cx, cy, params.radius, 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.strokeStyle = '#333';
+            ctx.beginPath();
+            ctx.moveTo(cx - scaleY * 2, cy); ctx.lineTo(cx + scaleY * 2, cy); // X
+            ctx.moveTo(cx, cy - scaleY * 2); ctx.lineTo(cx, cy + scaleY * 2); // Y
+            ctx.stroke();
+
+            // 2. The Radius
+            ctx.strokeStyle = '#fff';
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(px, visualPy);
+            ctx.stroke();
+
+
+            // --- COMPONENT VISUALIZATION ---
+            if (params.showComponents) {
+                
+                // COSINE (Blue Horizontal)
+                if (params.showCos) {
+                    ctx.strokeStyle = '#0088ff';
+                    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(px, cy); ctx.stroke();
+                }
+
+                // SINE (Red Vertical)
+                if (params.showSin) {
+                    ctx.strokeStyle = '#ff0055';
+                    ctx.beginPath(); ctx.moveTo(px, cy); ctx.lineTo(px, visualPy); ctx.stroke();
+                }
+
+                // TANGENT (Green Wall at X=1)
+                // Tangent touches circle at angle 0 (Right side)
+                if (params.showTan) {
+                    const tanX = cx + params.radius;
+                    const tanY = cy - t * params.radius;
+                    // Wall
+                    ctx.strokeStyle = '#333'; ctx.setLineDash([2, 2]);
+                    ctx.beginPath(); ctx.moveTo(tanX, cy - height); ctx.lineTo(tanX, cy + height); ctx.stroke(); ctx.setLineDash([]);
+                    // Value
+                    if (Math.abs(t) < 10) { // Don't draw if infinite
+                         ctx.strokeStyle = '#00ff88';
+                         ctx.beginPath(); ctx.moveTo(tanX, cy); ctx.lineTo(tanX, tanY); ctx.stroke();
+                         // Extension ray
+                         ctx.globalAlpha = 0.3; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(tanX, tanY); ctx.stroke(); ctx.globalAlpha = 1.0;
+                    }
+                }
+
+                // COTANGENT (Orange Ceiling at Y=1)
+                // Cotangent touches circle at angle 90 (Top)
+                if (params.showCot) {
+                    const cotY = cy - params.radius;
+                    // Note: Cotangent represents x-offset at y=1. 
+                    // x = r * cot(theta)
+                    const cotX = cx + cot * params.radius;
+                    
+                    // Ceiling
+                    ctx.strokeStyle = '#333'; ctx.setLineDash([2, 2]);
+                    ctx.beginPath(); ctx.moveTo(cx - width, cotY); ctx.lineTo(cx + width, cotY); ctx.stroke(); ctx.setLineDash([]);
+                    
+                    if (Math.abs(cot) < 10) {
+                        ctx.strokeStyle = '#ffaa00';
+                        ctx.beginPath(); ctx.moveTo(cx, cotY); ctx.lineTo(cotX, cotY); ctx.stroke();
+                        // Extension
+                        ctx.globalAlpha = 0.3; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cotX, cotY); ctx.stroke(); ctx.globalAlpha = 1.0;
+                    }
+                }
+
+                // SECANT (Cyan Hypotenuse to X-Axis)
+                if (params.showSec) {
+                    // Secant is distance from center to where tangent hits X axis
+                    // x = r * sec(theta)
+                    if (Math.abs(c) > 0.01) {
+                         const secX = cx + sec * params.radius;
+                         ctx.strokeStyle = '#00ffff';
+                         ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(secX, cy); ctx.stroke();
+                         // Dashed vertical to show connection
+                         ctx.setLineDash([2,2]); ctx.beginPath(); ctx.moveTo(secX, cy); ctx.lineTo(px, visualPy); ctx.stroke(); ctx.setLineDash([]);
+                    }
+                }
+                
+                // COSECANT (Magenta Hypotenuse to Y-Axis)
+                if (params.showCsc) {
+                    // Cosecant is distance from center to where tangent hits Y axis
+                    // y = r * csc(theta)
+                    if (Math.abs(s) > 0.01) {
+                        const cscY = cy - csc * params.radius;
+                        ctx.strokeStyle = '#ff00ff';
+                        ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx, cscY); ctx.stroke();
+                    }
+                }
+            }
+
+
+            // --- GRAPH DRAWING ---
+            
+            // Axis
+            ctx.strokeStyle = '#333'; ctx.beginPath(); ctx.moveTo(graphX, cy); ctx.lineTo(width, cy); ctx.stroke();
+
+            const plotTrace = (key, color) => {
+                ctx.strokeStyle = color;
+                ctx.lineWidth = params.lineWidth;
+                ctx.beginPath();
+                
+                let drawing = false;
+
+                for (let i = 0; i < trail.length; i++) {
+                    const val = trail[i][key];
+                    
+                    // Filter Crazy Asymptotes
+                    if (Math.abs(val) > 5) {
+                        drawing = false;
+                        continue; 
+                    }
+
+                    const x = graphX + i;
+                    const y = cy - val * scaleY;
+                    
+                    if (!drawing) {
+                        ctx.moveTo(x, y);
+                        drawing = true;
+                    } else {
+                        // Check for discontinuity (jumping from + to - instantly)
+                        const prevVal = trail[i-1][key];
+                        if (Math.abs(val - prevVal) > 3) {
+                             ctx.moveTo(x, y); // Jump, don't connect
+                        } else {
+                             ctx.lineTo(x, y);
+                        }
+                    }
+                }
+                ctx.stroke();
+            };
+
+            if (params.showSin) plotTrace('sin', '#ff0055');
+            if (params.showCos) plotTrace('cos', '#0088ff');
+            if (params.showTan) plotTrace('tan', '#00ff88');
+            if (params.showSec) plotTrace('sec', '#00ffff');
+            if (params.showCsc) plotTrace('csc', '#ff00ff');
+            if (params.showCot) plotTrace('cot', '#ffaa00');
+
+            // Draw Dot on Graph (Current Time)
+            const drawGraphDot = (key, color, label, yOffset) => {
+                const val = (trail.length > 0) ? trail[0][key] : (key==='sin'?s:key==='cos'?c:t);
+                if (Math.abs(val) < 5) {
+                    const y = cy - val * scaleY;
+                    ctx.fillStyle = color;
+                    ctx.beginPath(); ctx.arc(graphX, y, 3, 0, Math.PI*2); ctx.fill();
+                    ctx.fillText(label, graphX + 10, y - 5);
+                }
+            };
+
+            ctx.font = '10px monospace';
+            if (params.showSin) drawGraphDot('sin', '#ff0055', 'SIN', 0);
+            if (params.showCos) drawGraphDot('cos', '#0088ff', 'COS', 0);
+            if (params.showTan) drawGraphDot('tan', '#00ff88', 'TAN', 0);
+            if (params.showSec) drawGraphDot('sec', '#00ffff', 'SEC', 0);
+            if (params.showCsc) drawGraphDot('csc', '#ff00ff', 'CSC', 0);
+            if (params.showCot) drawGraphDot('cot', '#ffaa00', 'COT', 0);
+
+            requestAnimationFrame(draw);
+        }
+
+        // --- UI ---
+        const pane = new Tweakpane.Pane({ title: 'Omni-Trig Engine' });
+        
+        const fPlay = pane.addFolder({ title: 'Playback' });
+        fPlay.addInput(params, 'paused', { label: 'Pause' });
+        fPlay.addInput(params, 'speed', { min: 0, max: 2.0 });
+        fPlay.addInput(params, 'radius', { min: 40, max: 150 });
+
+        const fPrim = pane.addFolder({ title: 'Primary Functions' });
+        fPrim.addInput(params, 'showSin', { label: 'Sine (Red)' });
+        fPrim.addInput(params, 'showCos', { label: 'Cosine (Blue)' });
+        fPrim.addInput(params, 'showTan', { label: 'Tangent (Grn)' });
+        
+        const fRecip = pane.addFolder({ title: 'Reciprocal Functions' });
+        fRecip.addInput(params, 'showSec', { label: 'Secant (Cyan)' });
+        fRecip.addInput(params, 'showCsc', { label: 'Cosecant (Mag)' });
+        fRecip.addInput(params, 'showCot', { label: 'Cotangent (Org)' });
+
+        fRecip.addButton({ title: 'Download Image' }).on('click', () => {
+             const link = document.createElement('a');
+             link.download = 'omni_trig.png';
+             link.href = canvas.toDataURL();
+             link.click();
+        });
+
+        resize();
+        draw();
+    </script>
+</body>
+</html>

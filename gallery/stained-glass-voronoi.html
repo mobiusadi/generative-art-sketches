@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Architectural Intelligence | Stained Glass</title>
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.1.0/dist/tweakpane.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #fff; }
+        canvas { display: block; width: 100%; height: 100%; }
+        .home-btn {
+            position: fixed; top: 20px; left: 20px;
+            color: #000; text-decoration: none; font-family: monospace;
+            font-size: 14px; z-index: 1000; opacity: 0.5; transition: 0.3s;
+            border: 1px solid rgba(127,127,127,0.3);
+            padding: 5px 10px; background: rgba(255,255,255,0.8);
+        }
+        .home-btn:hover { opacity: 1.0; background: #000; color: #fff; }
+    </style>
+</head>
+<body>
+
+    <a href="index.html" class="home-btn">← Home</a>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        class Random {
+            constructor(seed = 12345) { this.setSeed(seed); }
+            setSeed(seed) {
+                this.m = 0x80000000; this.a = 1103515245; this.c = 12345;
+                this.state = seed ? seed : Math.floor(Math.random() * (this.m - 1));
+            }
+            nextFloat() {
+                this.state = (this.a * this.state + this.c) % this.m;
+                return this.state / (this.m - 1);
+            }
+            range(min, max) { return min + this.nextFloat() * (max - min); }
+            pick(arr) { return arr[Math.floor(this.nextFloat() * arr.length)]; }
+        }
+
+        const canvas = document.getElementById('canvas');
+        const context = canvas.getContext('2d');
+
+        const params = {
+            count: 50,
+            seed: 1,
+            lineWidth: 2,
+            lineColor: '#111111',
+            fillCells: true,
+            
+            // New Dot Controls
+            showDots: false,
+            dotSize: 4,
+            dotColor: '#ff0000',
+
+            // Color Settings
+            mode: 'Manual',
+            baseColor: '#264653',
+            c1: '#264653',
+            c2: '#2a9d8f',
+            c3: '#e9c46a',
+            c4: '#e76f51'
+        };
+
+        let width, height;
+
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+            draw();
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        function draw() {
+            const rng = new Random(params.seed);
+
+            // Palette Generation
+            let palette = [];
+            if (params.mode === 'Manual') {
+                palette = [params.c1, params.c2, params.c3, params.c4];
+            } else {
+                const base = d3.hsl(params.baseColor);
+                palette = [
+                    base.formatHex(),
+                    d3.hsl(base.h, base.s, Math.min(1, base.l + 0.15)).formatHex(), 
+                    d3.hsl(base.h, base.s, Math.min(1, base.l + 0.30)).formatHex(), 
+                    d3.hsl(base.h, base.s, Math.min(1, base.l + 0.45)).formatHex() 
+                ];
+            }
+
+            // Generate Points
+            const points = [];
+            for (let i = 0; i < params.count; i++) {
+                points.push([
+                    rng.range(0, width),
+                    rng.range(0, height)
+                ]);
+            }
+
+            // Calculate Voronoi
+            const delaunay = d3.Delaunay.from(points);
+            const voronoi = delaunay.voronoi([0, 0, width, height]);
+
+            // Calculate Neighbors & Colors
+            const cellColors = [];
+            for (let i = 0; i < points.length; i++) {
+                const neighbors = Array.from(voronoi.neighbors(i));
+                const neighborColors = new Set();
+                neighbors.forEach(nIndex => {
+                    if (cellColors[nIndex]) neighborColors.add(cellColors[nIndex]);
+                });
+
+                let chosenColor = palette.find(c => !neighborColors.has(c));
+                if (!chosenColor) chosenColor = rng.pick(palette);
+                cellColors[i] = chosenColor;
+            }
+
+            // --- DRAWING ---
+            context.fillStyle = '#ffffff';
+            context.fillRect(0, 0, width, height);
+
+            context.lineWidth = params.lineWidth;
+            context.strokeStyle = params.lineColor;
+
+            // 1. Draw Cells
+            for (let i = 0; i < points.length; i++) {
+                context.beginPath();
+                voronoi.renderCell(i, context);
+                
+                if (params.fillCells) {
+                    context.fillStyle = cellColors[i];
+                    context.fill();
+                }
+                context.stroke();
+            }
+
+            // 2. Draw Dots (On Top)
+            if (params.showDots) {
+                context.fillStyle = params.dotColor;
+                points.forEach(p => {
+                    context.beginPath();
+                    context.arc(p[0], p[1], params.dotSize, 0, Math.PI * 2);
+                    context.fill();
+                });
+            }
+        }
+
+        const pane = new Tweakpane.Pane({ title: 'Stained Glass' });
+
+        const f1 = pane.addFolder({ title: 'Geometry' });
+        f1.addInput(params, 'count', { min: 10, max: 200, step: 1 }).on('change', draw);
+        f1.addInput(params, 'seed', { min: 0, max: 100, step: 1 }).on('change', draw);
+        f1.addInput(params, 'lineWidth', { min: 0.5, max: 10 }).on('change', draw);
+        f1.addInput(params, 'showDots').on('change', draw);
+        f1.addInput(params, 'dotSize', { min: 1, max: 20 }).on('change', draw);
+        f1.addInput(params, 'dotColor').on('change', draw);
+
+        const f2 = pane.addFolder({ title: 'Color Palette' });
+        f2.addInput(params, 'fillCells').on('change', draw);
+        f2.addInput(params, 'lineColor').on('change', draw);
+        
+        f2.addInput(params, 'mode', { options: { Manual: 'Manual', Monochrome: 'Monochrome' } }).on('change', draw);
+        f2.addInput(params, 'c1', { label: 'Color A' }).on('change', draw);
+        f2.addInput(params, 'c2', { label: 'Color B' }).on('change', draw);
+        f2.addInput(params, 'c3', { label: 'Color C' }).on('change', draw);
+        f2.addInput(params, 'c4', { label: 'Color D' }).on('change', draw);
+        f2.addSeparator();
+        f2.addInput(params, 'baseColor', { label: 'Mono Base' }).on('change', draw);
+
+        f2.addButton({ title: 'Randomize Seed' }).on('click', () => {
+            params.seed = Math.floor(Math.random() * 100);
+            pane.refresh();
+            draw();
+        });
+
+        f2.addButton({ title: 'Save .PNG' }).on('click', () => {
+            const link = document.createElement('a');
+            link.download = `stained-glass-${params.seed}.png`;
+            link.href = canvas.toDataURL();
+            link.click();
+        });
+
+        draw();
+    </script>
+</body>
+</html>

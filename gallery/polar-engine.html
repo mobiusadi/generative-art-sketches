@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Architectural Intelligence | Polar Engine v2.2</title>
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.1.0/dist/tweakpane.min.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #111; font-family: monospace; }
+        canvas { display: block; }
+        
+        #hud {
+            position: absolute;
+            top: 20px; left: 20px;
+            width: 260px;
+            pointer-events: none;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 12px;
+            background: rgba(0,0,0,0.6);
+            padding: 15px;
+            border: 1px solid #333;
+            border-radius: 4px;
+        }
+        .val { color: #fff; font-weight: bold; }
+        .header { border-bottom: 1px solid #444; padding-bottom: 5px; margin-bottom: 10px; color: #fff; font-weight: bold;}
+        .math-row { margin-top: 10px; font-size: 11px; color: #aaa; line-height: 1.4; }
+    </style>
+</head>
+<body>
+    <div id="hud">
+        <div class="header">POLAR PLOTTER v2.2</div>
+        <div>LOBES (m): <span id="val-m" class="val">--</span></div>
+        <div>N-VALUES: <span id="val-n" class="val">--</span></div>
+        <br>
+        <div style="color:#888">REAL-TIME DATA:</div>
+        <div>THETA: <span id="val-theta" class="val" style="color:#00ffff">--</span></div>
+        <div>RADIUS: <span id="val-r" class="val" style="color:#ff0055">--</span></div>
+        
+        <div class="math-row">
+            <strong>The Superformula:</strong><br>
+            r = ( |cos(m·θ/4)|^n2 + |sin(m·θ/4)|^n3 ) ^ (-1/n1)
+        </div>
+    </div>
+    <canvas id="canvas"></canvas>
+
+    <script type="module">
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        const params = {
+            // DNA
+            m: 3,       
+            n1: 2.59,      
+            n2: 1.37,      
+            n3: 4.55,      
+            a: 1,       
+            b: 1,
+            
+            // Visuals
+            scale: 200,
+            lineWidth: 2,
+            color: '#00ffff',
+            
+            // Animation
+            speed: 1.0,     
+            autoPlay: true,
+            drawHead: true
+        };
+
+        let width, height;
+        let progress = 0; 
+        let cycles = 0; 
+
+        function superformula(theta) {
+            const part1 = Math.pow(Math.abs(Math.cos(params.m * theta / 4) / params.a), params.n2);
+            const part2 = Math.pow(Math.abs(Math.sin(params.m * theta / 4) / params.b), params.n3);
+            if (part1 + part2 === 0) return 0;
+            return Math.pow(part1 + part2, -1 / params.n1);
+        }
+
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+        }
+        window.addEventListener('resize', resize);
+
+        function animate() {
+            if (params.autoPlay) {
+                progress += 0.01 * params.speed;
+            }
+            if (progress > Math.PI * 2) {
+                progress = 0; 
+                cycles++;
+            }
+
+            ctx.fillStyle = '#111';
+            ctx.fillRect(0, 0, width, height);
+
+            document.getElementById('val-m').innerText = params.m.toFixed(1);
+            document.getElementById('val-n').innerText = `${params.n1.toFixed(1)} / ${params.n2.toFixed(1)} / ${params.n3.toFixed(1)}`;
+
+            ctx.save();
+            ctx.translate(width / 2, height / 2);
+
+            ctx.lineWidth = params.lineWidth;
+            ctx.lineJoin = 'round';
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = params.color;
+
+            const resolution = 0.01; 
+            
+            // Draw Trace (Full loop if we've cycled, else partial)
+            if (cycles > 0) {
+                ctx.beginPath();
+                ctx.strokeStyle = params.color; 
+                for (let t = 0; t <= Math.PI * 2; t += resolution) {
+                    const r = superformula(t);
+                    const x = (params.scale * r) * Math.cos(t);
+                    const y = (params.scale * r) * Math.sin(t);
+                    if (t === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                }
+                ctx.closePath();
+                ctx.stroke();
+            } else {
+                ctx.beginPath();
+                ctx.strokeStyle = params.color;
+                for (let t = 0; t <= progress; t += resolution) {
+                    const r = superformula(t);
+                    const x = (params.scale * r) * Math.cos(t);
+                    const y = (params.scale * r) * Math.sin(t);
+                    if (t === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+            }
+
+            const rHead = superformula(progress);
+            const xHead = (params.scale * rHead) * Math.cos(progress);
+            const yHead = (params.scale * rHead) * Math.sin(progress);
+
+            if (params.drawHead) {
+                ctx.fillStyle = '#fff';
+                ctx.shadowColor = '#fff';
+                ctx.shadowBlur = 15;
+                ctx.beginPath();
+                ctx.arc(xHead, yHead, params.lineWidth + 2, 0, Math.PI * 2);
+                ctx.fill();
+                
+                ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+                ctx.lineWidth = 1;
+                ctx.shadowBlur = 0;
+                ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(xHead, yHead); ctx.stroke();
+            }
+
+            document.getElementById('val-theta').innerText = (progress * 180 / Math.PI).toFixed(0) + "°";
+            document.getElementById('val-r').innerText = rHead.toFixed(3);
+
+            ctx.restore();
+            requestAnimationFrame(animate);
+        }
+
+        // --- EXPORTERS ---
+
+        function exportSVG() {
+            // Build the SVG path string
+            const res = 0.005; // High res for export
+            let d = "";
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            
+            const points = [];
+            // Generate full loop
+            for (let t = 0; t <= Math.PI * 2; t += res) {
+                const r = superformula(t);
+                const x = (params.scale * r) * Math.cos(t);
+                const y = (params.scale * r) * Math.sin(t);
+                points.push({x, y});
+                
+                // Track bounds
+                minX = Math.min(minX, x); minY = Math.min(minY, y);
+                maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
+            }
+            // Close loop perfectly
+            const r0 = superformula(0);
+            points.push({x: (params.scale * r0), y: 0});
+
+            // Construct Path
+            points.forEach((p, i) => {
+                if (i===0) d += `M ${p.x.toFixed(3)} ${p.y.toFixed(3)} `;
+                else d += `L ${p.x.toFixed(3)} ${p.y.toFixed(3)} `;
+            });
+            d += "Z";
+
+            // Add margin to viewbox
+            const margin = 20;
+            const w = (maxX - minX) + margin*2;
+            const h = (maxY - minY) + margin*2;
+            const vbX = minX - margin;
+            const vbY = minY - margin;
+
+            const svgContent = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vbX} ${vbY} ${w} ${h}">
+    <path d="${d}" fill="none" stroke="black" stroke-width="1" />
+</svg>`;
+
+            const blob = new Blob([svgContent], {type: "image/svg+xml;charset=utf-8"});
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = `polar_shape_m${params.m.toFixed(1)}.svg`;
+            link.click();
+        }
+
+        function exportDXF() {
+            // Standard DXF Header for Entities
+            let dxf = "";
+            dxf += "0\nSECTION\n2\nENTITIES\n";
+            
+            // Start Polyline
+            dxf += "0\nPOLYLINE\n8\n0\n66\n1\n";
+            // 70 = 1 means Closed Polyline
+            dxf += "70\n1\n";
+            
+            const res = 0.005;
+            for (let t = 0; t <= Math.PI * 2; t += res) {
+                const r = superformula(t);
+                const x = (params.scale * r) * Math.cos(t);
+                // Flip Y for CAD standard (optional, but usually helpful)
+                const y = (params.scale * r) * Math.sin(t); 
+                
+                dxf += "0\nVERTEX\n8\n0\n";
+                dxf += `10\n${x.toFixed(4)}\n`; // X
+                dxf += `20\n${y.toFixed(4)}\n`; // Y
+                dxf += "30\n0.0\n"; // Z
+            }
+
+            dxf += "0\nSEQEND\n";
+            dxf += "0\nENDSEC\n";
+            dxf += "0\nEOF\n";
+
+            const blob = new Blob([dxf], {type: "application/dxf"});
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = `polar_shape_m${params.m.toFixed(1)}.dxf`;
+            link.click();
+        }
+
+
+        // --- UI ---
+        const pane = new Tweakpane.Pane({ title: 'Polar Engine v2.2' });
+        
+        const fAnim = pane.addFolder({ title: 'Plotter' });
+        fAnim.addInput(params, 'autoPlay', { label: 'Active' });
+        fAnim.addInput(params, 'speed', { min: 0.1, max: 5.0, label: 'Speed' });
+        fAnim.addButton({ title: 'Clear / Restart' }).on('click', () => { 
+            progress = 0; 
+            cycles = 0; 
+        });
+
+        const fShape = pane.addFolder({ title: 'DNA' });
+        fShape.addInput(params, 'm', { min: 0, max: 20, step: 0.1, label: 'Lobes (m)' });
+        fShape.addInput(params, 'n1', { min: 0.1, max: 10, label: 'Bloat (n1)' });
+        fShape.addInput(params, 'n2', { min: 0.0, max: 10, label: 'Pinch A (n2)' });
+        fShape.addInput(params, 'n3', { min: 0.0, max: 10, label: 'Pinch B (n3)' });
+        
+        const fStyle = pane.addFolder({ title: 'Style' });
+        fStyle.addInput(params, 'scale', { min: 50, max: 500 });
+        fStyle.addInput(params, 'color', { label: 'Neon' });
+        fStyle.addButton({ title: 'Randomize DNA' }).on('click', () => {
+            params.m = Math.floor(Math.random() * 12) + 2;
+            params.n1 = Math.random() * 5 + 0.2;
+            params.n2 = Math.random() * 5 + 0.2;
+            params.n3 = Math.random() * 5 + 0.2;
+            pane.refresh();
+        });
+
+        const fExport = pane.addFolder({ title: 'Fabrication' });
+        fExport.addButton({ title: 'Download Image (PNG)' }).on('click', () => {
+             const link = document.createElement('a');
+             link.download = 'polar_trace.png';
+             link.href = canvas.toDataURL();
+             link.click();
+        });
+        fExport.addButton({ title: 'Export Vector (SVG)' }).on('click', exportSVG);
+        fExport.addButton({ title: 'Export CAD (DXF)' }).on('click', exportDXF);
+
+        resize();
+        animate();
+
+    </script>
+</body>
+</html>

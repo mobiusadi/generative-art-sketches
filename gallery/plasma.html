@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MOBIUS | Liquid Plasma</title>
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.1.0/dist/tweakpane.min.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
+        canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
+        .home-btn {
+            position: fixed; top: 20px; left: 20px;
+            color: #fff; text-decoration: none; font-family: monospace;
+            font-size: 14px; z-index: 1000; opacity: 0.5; transition: 0.3s;
+            mix-blend-mode: difference; border: 1px solid rgba(255,255,255,0.3);
+            padding: 5px 10px; background: rgba(0,0,0,0.5);
+        }
+        .home-btn:hover { opacity: 1.0; background: #fff; color: #000; }
+    </style>
+</head>
+<body>
+
+    <a href="index.html" class="home-btn">← Home</a>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        // --- 1. SETUP ---
+        const canvas = document.getElementById('canvas');
+        const context = canvas.getContext('2d');
+
+        // Configuration - UPDATED DEFAULTS
+        const params = {
+            speed: 0.5,    // Nice and slow
+            scale: 4,      
+            twist: 1,      // Just one main ray/void
+            spiral: 1.0,   
+            brightness: 1.2,
+            contrast: 1.1,
+            
+            // Color Logic (Cosine Gradient)
+            rFreq: 0.5, gFreq: 0.5, bFreq: 0.5,
+            rPhase: 0.0, gPhase: 0.33, bPhase: 0.67
+        };
+
+        let width, height;
+        let imgData, data;
+        let frame = 0;
+
+        // --- 2. RESIZE HANDLER ---
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+            imgData = context.createImageData(width, height);
+            data = imgData.data;
+        }
+        window.addEventListener('resize', resize);
+
+        // --- 3. THE RENDER LOOP ---
+        function animate() {
+            requestAnimationFrame(animate);
+            frame++;
+
+            const { speed, scale, twist, spiral, brightness, contrast, 
+                    rFreq, gFreq, bFreq, rPhase, gPhase, bPhase } = params;
+            
+            const time = frame * speed * 0.01;
+            const cx = width * 0.5;
+            const cy = height * 0.5;
+            const pi2 = Math.PI * 2;
+
+            for (let y = 0; y < height; y++) {
+                const v = (y - cy) / cy;
+                const v2 = v * v;
+                const rowOffset = y * width;
+
+                for (let x = 0; x < width; x++) {
+                    const u = (x - cx) / cx;
+                    
+                    // Polar Coords
+                    const dist = Math.sqrt(u * u + v2);
+                    const angle = Math.atan2(v, u);
+
+                    // Warper Logic
+                    const warper = Math.sin(dist * scale - time);
+                    const val = Math.sin(angle * twist + dist * spiral + warper);
+                    
+                    // Color Mapping
+                    const r = 0.5 + 0.5 * Math.cos(rFreq * val + time + rPhase * pi2);
+                    const g = 0.5 + 0.5 * Math.cos(gFreq * val + time + gPhase * pi2);
+                    const b = 0.5 + 0.5 * Math.cos(bFreq * val + time + bPhase * pi2);
+
+                    // Write to Array
+                    const index = (rowOffset + x) * 4;
+                    data[index + 0] = r * 255 * brightness * contrast; 
+                    data[index + 1] = g * 255 * brightness * contrast; 
+                    data[index + 2] = b * 255 * brightness * contrast; 
+                    data[index + 3] = 255;
+                }
+            }
+            context.putImageData(imgData, 0, 0);
+        }
+
+        // --- 4. CONTROLS ---
+        const pane = new Tweakpane.Pane({ title: 'Liquid Plasma' });
+        
+        const f1 = pane.addFolder({ title: 'Fluid Motion' });
+        f1.addInput(params, 'speed', { min: 0, max: 5 }); // Reduced max speed range for finer control at low speeds
+        f1.addInput(params, 'scale', { min: 1, max: 20, label: 'Zoom' });
+        f1.addInput(params, 'twist', { min: 1, max: 20, step: 1, label: 'Rays' });
+        f1.addInput(params, 'spiral', { min: -10, max: 10, label: 'Twist' });
+
+        const f2 = pane.addFolder({ title: 'Color Science' });
+        f2.addInput(params, 'brightness', { min: 0, max: 2 });
+        f2.addInput(params, 'contrast', { min: 0, max: 2 });
+        f2.addInput(params, 'rPhase', { min: 0, max: 1, label: 'Red Phase' });
+        f2.addInput(params, 'gPhase', { min: 0, max: 1, label: 'Green Phase' });
+        f2.addInput(params, 'bPhase', { min: 0, max: 1, label: 'Blue Phase' });
+
+        resize();
+        animate();
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Architectural Intelligence | Parabolic Engine</title>
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.1.0/dist/tweakpane.min.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #111; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <script type="module">
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        const params = {
+            // Playback
+            paused: false,
+            speed: 0.5,
+            parameter: 0.0,     // The parameter (t)
+            
+            // Visuals
+            scale: 40,          // Zoom
+            p: 2.0,             // Focal Distance
+            
+            // Toggles
+            showFocus: true,
+            showDirectrix: true,
+            showConstruction: true, 
+            showTangent: false      
+        };
+
+        let width, height;
+        let t = 0; 
+        let direction = 1; 
+
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+        }
+        window.addEventListener('resize', resize);
+
+        function draw() {
+            ctx.fillStyle = '#111';
+            ctx.fillRect(0, 0, width, height);
+
+            const cx = width * 0.5; // Center X
+            const cy = height * 0.6; // Vertex Y
+            
+            // --- PHYSICS ---
+            if (!params.paused) {
+                t += params.speed * 0.05 * direction;
+                if (t > 8.0 || t < -8.0) direction *= -1;
+                params.parameter = t; 
+            } else {
+                t = params.parameter;
+            }
+
+            const p = params.p;
+            
+            // --- PARAMETRIC LOGIC ---
+            // x = t
+            // y = t^2 / 4p
+            const x = t;
+            const y = (t * t) / (4 * p); 
+
+            // Screen Coordinates (Invert Y for drawing)
+            const sx = cx + x * params.scale;
+            const sy = cy - y * params.scale;
+            
+            const focusY = cy - p * params.scale; 
+            const directrixY = cy + p * params.scale; 
+
+            // --- DRAWING ---
+
+            // 1. The Directrix
+            if (params.showDirectrix) {
+                ctx.strokeStyle = '#666';
+                ctx.setLineDash([5, 5]);
+                ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.moveTo(0, directrixY); ctx.lineTo(width, directrixY); ctx.stroke();
+                ctx.fillStyle = '#666'; ctx.fillText("Directrix (y = -p)", 10, directrixY - 5);
+                ctx.setLineDash([]);
+            }
+
+            // 2. The Focus
+            if (params.showFocus) {
+                ctx.fillStyle = '#ffcc00';
+                ctx.beginPath(); ctx.arc(cx, focusY, 5, 0, Math.PI*2); ctx.fill();
+                ctx.fillText("Focus (0, p)", cx + 10, focusY);
+            }
+
+            // 3. The Parabola Curve
+            ctx.strokeStyle = '#00ffff';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            for (let i = -10; i <= 10; i += 0.1) {
+                const px = cx + i * params.scale;
+                const py = cy - ((i * i) / (4 * p)) * params.scale;
+                if (i === -10) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+            }
+            ctx.stroke();
+
+            // 4. Construction (Equality)
+            if (params.showConstruction) {
+                ctx.strokeStyle = '#ffcc00'; ctx.setLineDash([2, 2]); ctx.lineWidth = 2;
+                // Point to Focus
+                ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(cx, focusY); ctx.stroke();
+                // Point to Directrix
+                ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx, directrixY); ctx.stroke();
+                ctx.setLineDash([]);
+
+                // Point P
+                ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(sx, sy, 6, 0, Math.PI*2); ctx.fill();
+                ctx.fillText(`P (t=${t.toFixed(1)})`, sx + 10, sy);
+            }
+
+            // 5. Tangent Reflection
+            if (params.showTangent) {
+                const slope = x / (2 * p);
+                const angle = Math.atan(slope);
+                const dx = Math.cos(angle) * 300;
+                const dy = Math.sin(angle) * 300; 
+                
+                ctx.strokeStyle = '#ff0055'; ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.moveTo(sx - dx, sy + dy); ctx.lineTo(sx + dx, sy - dy); ctx.stroke();
+                
+                // Rays
+                ctx.strokeStyle = '#00ff00'; ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, sy); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(cx, focusY); ctx.stroke();
+            }
+
+            // --- HUD (Equations) ---
+            ctx.textAlign = 'center';
+            ctx.font = '16px monospace';
+            
+            // Cartesian
+            ctx.fillStyle = '#888';
+            ctx.fillText(`Cartesian: y = x² / 4p`, cx, height - 80);
+            
+            // Parametric (The new feature)
+            ctx.fillStyle = '#00ffff';
+            ctx.fillText(`Parametric: x = t,  y = t² / 4p   (t = ${t.toFixed(2)})`, cx, height - 50);
+            
+            // Geometric
+            if (params.showConstruction) {
+                 ctx.fillStyle = '#ffcc00';
+                 ctx.fillText("Geometric: d(P, Focus) = d(P, Directrix)", cx, height - 20);
+            }
+
+            ctx.textAlign = 'left';
+
+            requestAnimationFrame(draw);
+        }
+
+        // --- UI ---
+        const pane = new Tweakpane.Pane({ title: 'Parabolic Engine' });
+        
+        const fPlay = pane.addFolder({ title: 'Playback' });
+        fPlay.addInput(params, 'paused', { label: 'Pause' });
+        fPlay.addInput(params, 'speed', { min: 0, max: 2.0 });
+        fPlay.addInput(params, 'parameter', { min: -8, max: 8, label: 'Param (t)' }).on('change', (ev) => { if (params.paused) t = ev.value; });
+
+        const fGeo = pane.addFolder({ title: 'Geometry' });
+        fGeo.addInput(params, 'p', { min: 0.5, max: 5.0, label: 'Focal (p)' });
+        fGeo.addInput(params, 'scale', { min: 10, max: 100, label: 'Zoom' });
+        
+        const fVis = pane.addFolder({ title: 'Visuals' });
+        fVis.addInput(params, 'showDirectrix', { label: 'Directrix' });
+        fVis.addInput(params, 'showFocus', { label: 'Focus' });
+        fVis.addInput(params, 'showConstruction', { label: 'Construct' });
+        fVis.addInput(params, 'showTangent', { label: 'Reflection' });
+
+        const fAct = pane.addFolder({ title: 'Actions' });
+        fAct.addButton({ title: 'Save Image' }).on('click', () => {
+             const link = document.createElement('a');
+             link.download = 'parabolic_parametric.png';
+             link.href = canvas.toDataURL();
+             link.click();
+        });
+
+        resize();
+        draw();
+    </script>
+</body>
+</html>

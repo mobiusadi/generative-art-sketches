@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Architectural Intelligence | Golden Ratio v3.6</title>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #111; font-family: monospace; }
+        canvas { display: block; }
+        
+        #hud {
+            position: absolute;
+            top: 20px; left: 20px;
+            width: 320px;
+            pointer-events: none;
+            color: #ccc;
+            background: rgba(0,0,0,0.85);
+            padding: 20px;
+            border-left: 2px solid #ffcc00;
+            border-radius: 0 4px 4px 0;
+        }
+        .title { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: #888; margin-bottom: 10px;}
+        .main-stat { font-size: 24px; color: #fff; margin-bottom: 5px; }
+        .sub-stat { font-size: 12px; color: #ffcc00; }
+        
+        #fib-list {
+            position: absolute;
+            top: 20px; right: 20px;
+            width: 220px;
+            pointer-events: none;
+            text-align: right;
+            font-size: 12px;
+            color: #666;
+            display: flex;
+            flex-direction: column-reverse; 
+        }
+        .fib-row { margin-bottom: 4px; border-bottom: 1px solid #222; padding-bottom: 2px;}
+    </style>
+</head>
+<body>
+    <div id="hud">
+        <div class="title">SEQUENCE ENGINE</div>
+        <div id="phase-title" class="main-stat">Phase 1</div>
+        <div id="phase-desc" class="sub-stat">Geometric Proportion</div>
+    </div>
+    <div id="fib-list"></div>
+    <canvas id="canvas"></canvas>
+
+    <script type="module">
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        const params = {
+            unit: 50,       
+            speed: 0.5,
+            pause: false
+        };
+
+        let width, height;
+        let time = 0;
+        const PHI = (1 + Math.sqrt(5)) / 2;
+
+        const C_A = '#00ffff';   // Cyan (Short)
+        const C_B = '#ff0055';   // Pink (Long)
+        const C_AB = '#ffcc00';  // Gold (Combined)
+        const C_DOTTED = '#666';
+        const C_GREY = '#444';
+
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+        }
+        window.addEventListener('resize', resize);
+
+        function drawLine(x1, y1, x2, y2, color, lw=2) {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = lw;
+            ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+            ctx.fillStyle = '#fff';
+            ctx.beginPath(); ctx.arc(x1, y1, 3, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(x2, y2, 3, 0, Math.PI*2); ctx.fill();
+        }
+
+        function drawDotted(x1, y1, x2, y2) {
+            ctx.strokeStyle = C_DOTTED;
+            ctx.lineWidth = 1;
+            ctx.setLineDash([4, 4]);
+            ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        function drawText(str, x, y, color='#888', align='center') {
+            ctx.fillStyle = color;
+            ctx.font = '12px monospace';
+            ctx.textAlign = align;
+            ctx.fillText(str, x, y);
+        }
+
+        function lerp(start, end, t) {
+            return start + (end - start) * Math.min(1, Math.max(0, t));
+        }
+
+        function animate() {
+            if (!params.pause) time += params.speed * 0.01;
+            if (time > 24) time = 0; 
+
+            ctx.fillStyle = '#111';
+            ctx.fillRect(0, 0, width, height);
+            
+            ctx.save();
+            ctx.translate(width/2, height/2);
+
+            if (time < 6) {
+                drawPhase1(time);
+                updateHUD("PROPORTION", "a : b :: b : a+b");
+                document.getElementById('fib-list').innerHTML = "";
+            } 
+            else if (time < 12) {
+                drawPhase2(time - 6);
+                updateHUD("CONSTRUCTION", "Morphing to Golden Rectangle");
+            }
+            else {
+                drawPhase3(time - 12);
+                updateHUD("SPIRAL", "Continuous Outward Growth");
+            }
+
+            ctx.restore();
+            requestAnimationFrame(animate);
+        }
+
+        // --- PHASE 1: STACKED PROPORTION ---
+        function drawPhase1(t) {
+            const u = params.unit; 
+            const len_a = u;         
+            const len_b = u * PHI;   
+            const len_ab = len_a + len_b; 
+
+            const y1 = -80;
+            const y3 = 80;
+            const slope = (y3 - y1) / (len_ab - len_a);
+            const y2 = y1 + slope * (len_b - len_a);
+
+            const xLeft = -100; 
+
+            // A (Top)
+            drawLine(xLeft, y1, xLeft + len_a, y1, C_A);
+            drawText('a', xLeft + len_a/2, y1 - 10, C_A);
+
+            // B (Middle)
+            if (t > 1) {
+                const drop = Math.min(1, t - 1);
+                const yCur = -80 + (y2 - (-80)) * drop;
+                drawLine(xLeft, yCur, xLeft + len_b, yCur, C_B);
+                if (drop > 0.9) drawText('b', xLeft + len_b/2, yCur - 10, C_B);
+            }
+
+            // A+B (Bottom)
+            if (t > 2.5) {
+                const drop = Math.min(1, t - 2.5);
+                const yCur = y2 + (y3 - y2) * drop;
+                drawLine(xLeft, yCur, xLeft + len_ab, yCur, C_AB);
+                if (drop > 0.9) drawText('a + b', xLeft + len_ab/2, yCur - 10, C_AB);
+
+                if (drop > 0.5) {
+                    drawDotted(xLeft, y1, xLeft, yCur); 
+                    const yEndB = y2;
+                    if (t > 4) {
+                        drawDotted(xLeft+len_a, y1, xLeft+len_ab, y3);
+                    } else {
+                        drawDotted(xLeft+len_a, y1, xLeft+len_b, yEndB);
+                    }
+                }
+            }
+        }
+
+        // --- PHASE 2: THE TRANSFORMATION ---
+        function drawPhase2(t) {
+            const u = params.unit;
+            const len_a = u;
+            const len_b = u * PHI;
+            const len_ab = len_a + len_b;
+            
+            const y1 = -80;
+            const y3 = 80;
+            const slope = (y3 - y1) / (len_ab - len_a);
+            const y2 = y1 + slope * (len_b - len_a);
+            const xLeft = -100;
+
+            const rectBaseY = 50;
+            const rectLeftX = -len_b/2;
+            
+            const moveT = Math.min(1, t / 2); 
+            
+            // B (Base)
+            const curBx = lerp(xLeft, rectLeftX, moveT);
+            const curBy = lerp(y2, rectBaseY, moveT);
+            drawLine(curBx, curBy, curBx + len_b, curBy, C_B);
+            
+            // A (Left Wall)
+            const startAx = xLeft; const startAy = y1; const startAngA = 0;
+            const targetAx = rectLeftX; const targetAy = rectBaseY; const targetAngA = -Math.PI/2;
+            
+            const curAx = lerp(startAx, targetAx, moveT);
+            const curAy = lerp(startAy, targetAy, moveT);
+            const curAngA = lerp(startAngA, targetAngA, moveT);
+            
+            const ax_end = curAx + len_a * Math.cos(curAngA);
+            const ay_end = curAy + len_a * Math.sin(curAngA);
+            drawLine(curAx, curAy, ax_end, ay_end, C_A);
+
+            // A+B (Yellow Fold)
+            const targetYelX = rectLeftX; 
+            const targetYelY = rectBaseY - len_a; 
+            const startAngYel = 0; 
+            const targetAngYel = -Math.PI/2; 
+            
+            let curYelX, curYelY, curAngYel;
+            
+            if (t < 2) {
+                curYelX = lerp(xLeft, targetYelX, moveT);
+                curYelY = lerp(y3, targetYelY, moveT);
+                curAngYel = lerp(startAngYel, targetAngYel, moveT);
+                const yel_end_x = curYelX + len_ab * Math.cos(curAngYel);
+                const yel_end_y = curYelY + len_ab * Math.sin(curAngYel);
+                drawLine(curYelX, curYelY, yel_end_x, yel_end_y, C_AB);
+            } 
+            else {
+                const foldT = t - 2;
+                const originX = targetYelX;
+                const originY = targetYelY;
+                
+                const f1 = Math.min(1, foldT / 1.5);
+                const ang1 = -Math.PI/2 + (Math.PI/2 * f1); 
+                
+                const elbowX = originX + len_b * Math.cos(ang1);
+                const elbowY = originY + len_b * Math.sin(ang1);
+                
+                drawLine(originX, originY, elbowX, elbowY, C_AB); 
+                
+                if (foldT > 1.5) {
+                    const f2 = Math.min(1, (foldT - 1.5) / 1.5);
+                    const ang2 = ang1 + (Math.PI/2 * f2); 
+                    const tipX = elbowX + len_a * Math.cos(ang2);
+                    const tipY = elbowY + len_a * Math.sin(ang2);
+                    drawLine(elbowX, elbowY, tipX, tipY, C_AB); 
+                } else {
+                    const tipX = elbowX + len_a * Math.cos(ang1);
+                    const tipY = elbowY + len_a * Math.sin(ang1);
+                    drawLine(elbowX, elbowY, tipX, tipY, C_AB);
+                }
+            }
+        }
+
+        // --- PHASE 3: THE PERFECT SPIRAL ---
+        function drawPhase3(t) {
+            const u = params.unit;
+            const len_a = u;
+            const len_b = u * PHI;
+            
+            // Zoom logic
+            const zoom = 1 / Math.pow(1.3, t);
+            ctx.scale(zoom, zoom);
+            
+            // Build Length Sequence: a, b, a+b, a+2b...
+            const sides = [len_a, len_b];
+            for(let k=2; k<14; k++) sides[k] = sides[k-1] + sides[k-2];
+            
+            const steps = Math.floor(t) + 1;
+            const partial = t % 1;
+            updateFibList(Math.floor(t), sides);
+
+            // --- CENTER MIGRATION LOGIC ---
+            // To maintain tangency, the center must shift by the difference 
+            // in radii (dR) at every quadrant turn.
+            let cx = 0, cy = 0;
+            const centers = [{x:0, y:0}]; // C0
+
+            for(let i=1; i<14; i++) {
+                const rCurr = sides[i];
+                const rPrev = sides[i-1];
+                const dR = rCurr - rPrev;
+                // Direction of previous arc determines shift direction
+                const dir = (i-1) % 4; 
+                
+                // Shift center based on quadrant transition to maintain connection
+                if(dir===0) cy -= dR; // 0->90 ends top. Next starts top. Center shifts down.
+                if(dir===1) cx += dR; // 90->180 ends left. Next starts left. Center shifts right.
+                if(dir===2) cy += dR; // 180->270 ends bottom. Next starts bottom. Center shifts up.
+                if(dir===3) cx -= dR; // 270->360 ends right. Next starts right. Center shifts left.
+
+                centers.push({x:cx, y:cy});
+            }
+
+            // DRAW LOOP
+            for(let i=0; i<steps; i++) {
+                const s = sides[i];
+                const center = centers[i];
+                
+                let col = C_GREY;
+                if(i===0) col = C_A;      // a
+                if(i===1) col = C_B;      // b
+                if(i===2) col = C_AB;     // a+b
+                
+                const q = i%4;
+                let sqX, sqY;
+                
+                // Square positioning relative to center and quadrant
+                if (q===0) { sqX = center.x; sqY = center.y; }
+                if (q===1) { sqX = center.x - s; sqY = center.y; }
+                if (q===2) { sqX = center.x - s; sqY = center.y - s; }
+                if (q===3) { sqX = center.x; sqY = center.y - s; }
+
+                // Draw Square
+                ctx.strokeStyle = (i < steps-1) ? '#333' : '#fff';
+                ctx.lineWidth = (i < steps-1) ? 1 : 2;
+                ctx.strokeRect(sqX, sqY, s, s);
+
+                // Draw Arc
+                const p = (i === Math.floor(t)) ? partial : 1;
+                if (p > 0) {
+                    ctx.beginPath();
+                    ctx.strokeStyle = col;
+                    ctx.lineWidth = 3;
+                    
+                    const startAngle = q * (Math.PI/2);
+                    const endAngle = startAngle + (Math.PI/2 * p);
+                    
+                    ctx.arc(center.x, center.y, s, startAngle, endAngle);
+                    ctx.stroke();
+                }
+            }
+        }
+
+        function updateHUD(title, desc) {
+            document.getElementById('phase-title').innerText = title;
+            document.getElementById('phase-desc').innerText = desc;
+        }
+
+        function updateFibList(step, sides) {
+            const el = document.getElementById('fib-list');
+            el.innerHTML = "";
+            const start = Math.max(1, step - 8);
+            for(let i=start; i<=step; i++) {
+                if(!sides[i]) break;
+                const fCur = (sides[i] / params.unit).toFixed(2);
+                const fPrev = (sides[i-1] / params.unit).toFixed(2);
+                const ratio = sides[i] / sides[i-1];
+                
+                const div = document.createElement('div');
+                div.className = 'fib-row';
+                div.innerHTML = `<span style="color:#666">${fCur} / ${fPrev}</span> = ${ratio.toFixed(4)}`;
+                el.appendChild(div);
+            }
+        }
+
+        resize();
+        animate();
+
+    </script>
+</body>
+</html>

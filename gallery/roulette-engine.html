@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Architectural Intelligence | Universal Roulette v2</title>
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.1.0/dist/tweakpane.min.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #111; font-family: monospace; }
+        canvas { display: block; }
+        
+        #hud {
+            position: absolute;
+            top: 20px; left: 20px;
+            width: 260px;
+            pointer-events: none;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 12px;
+            background: rgba(0,0,0,0.6);
+            padding: 15px;
+            border: 1px solid #333;
+            border-radius: 4px;
+        }
+        .val { color: #fff; font-weight: bold; }
+        .header { border-bottom: 1px solid #444; padding-bottom: 5px; margin-bottom: 10px; color: #fff; font-weight: bold;}
+    </style>
+</head>
+<body>
+    <div id="hud">
+        <div class="header">ROULETTE ENGINE v2</div>
+        <div>BASE: <span id="val-base" class="val" style="color:#00ffff">--</span></div>
+        <div>ARC LENGTH: <span id="val-s" class="val">--</span></div>
+        <br>
+        <div style="color:#888">Calculates curve of a circle rolling on arbitrary surface without slipping.</div>
+    </div>
+    <canvas id="canvas"></canvas>
+
+    <script type="module">
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        const params = {
+            baseCurve: 'Sine Wave', 
+            scale: 50,      // Zoom of the base curve
+            
+            // The Rolling Wheel
+            r: 30,          // Radius
+            d: 60,          // Pen Offset (d=r is standard)
+            side: 1,        // 1 = Top/Outside, -1 = Bottom/Inside
+            
+            // Simulation
+            speed: 1.0,
+            resolution: 3000, // Increased default buffer
+            
+            // Visuals
+            color: '#ff0055',
+            showMech: true,
+            lineWidth: 2
+        };
+
+        let width, height;
+        let t = 0;          // Parameter t for the base curve
+        let trace = [];
+
+        // --- CURVE DEFINITIONS ---
+        function getBasePoint(t) {
+            const s = params.scale;
+            if (params.baseCurve === 'Line') {
+                return { x: t * s, y: 0 };
+            } 
+            else if (params.baseCurve === 'Parabola') {
+                return { x: t * s, y: 0.2 * (t*s)*(t*s) / s };
+            }
+            else if (params.baseCurve === 'Sine Wave') {
+                return { x: t * s, y: Math.sin(t) * s * 2 };
+            }
+            else if (params.baseCurve === 'Circle') {
+                const R = 3 * s;
+                return { x: R * Math.cos(t/3), y: R * Math.sin(t/3) };
+            }
+            else if (params.baseCurve === 'Ellipse') {
+                return { x: 3 * s * Math.cos(t/3), y: 2 * s * Math.sin(t/3) };
+            }
+            else if (params.baseCurve === 'Cycloid') {
+                const R = s; 
+                return { x: R * (t - Math.sin(t)), y: -R * (1 - Math.cos(t)) + 2*s }; 
+            }
+            return { x: t*s, y: 0 };
+        }
+
+        // --- DERIVATIVES & INTEGRALS ---
+        function getFrame(t) {
+            const dt = 0.001;
+            const p0 = getBasePoint(t);
+            const p1 = getBasePoint(t + dt);
+            
+            let tx = p1.x - p0.x;
+            let ty = p1.y - p0.y;
+            const len = Math.sqrt(tx*tx + ty*ty);
+            tx /= len; ty /= len;
+            
+            const side = params.side; 
+            const nx = -ty * side; 
+            const ny = tx * side;
+            
+            return { p: p0, tx, ty, nx, ny, distStep: len };
+        }
+
+        let currentArcLen = 0;
+        let lastT = 0;
+
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+        }
+        window.addEventListener('resize', resize);
+
+        function reset() {
+            trace = [];
+            t = params.baseCurve === 'Line' || params.baseCurve === 'Parabola' || params.baseCurve === 'Sine Wave' || params.baseCurve === 'Cycloid' ? -Math.PI * 2 : 0;
+            if (params.baseCurve === 'Parabola' || params.baseCurve === 'Sine Wave') t = -5;
+            
+            lastT = t;
+            currentArcLen = 0;
+        }
+
+        function draw() {
+            ctx.fillStyle = '#111';
+            ctx.fillRect(0, 0, width, height);
+
+            const cx = width / 2;
+            const cy = height / 2 + (params.baseCurve === 'Parabola' || params.baseCurve === 'Sine Wave' ? 0 : 0);
+            
+            document.getElementById('val-base').innerText = params.baseCurve;
+            document.getElementById('val-s').innerText = currentArcLen.toFixed(1);
+
+            // --- PHYSICS UPDATE ---
+            const dt = 0.01 * params.speed;
+            t += dt;
+            
+            const prevP = getBasePoint(lastT);
+            const currP = getBasePoint(t);
+            const stepDist = Math.sqrt(Math.pow(currP.x - prevP.x, 2) + Math.pow(currP.y - prevP.y, 2));
+            currentArcLen += stepDist * (params.speed > 0 ? 1 : -1);
+            lastT = t;
+
+            // --- GEOMETRY ---
+            const frame = getFrame(t);
+            const contactP = frame.p; 
+            
+            const wheelCx = contactP.x + frame.nx * params.r;
+            const wheelCy = contactP.y + frame.ny * params.r;
+            
+            const phi = -(currentArcLen / params.r) * params.side;
+            const totalAngle = Math.atan2(-frame.nx, -frame.ny) + phi; 
+            
+            const penX = wheelCx + params.d * Math.sin(totalAngle); 
+            const penY = wheelCy + params.d * Math.cos(totalAngle);
+            
+            trace.push({ x: penX, y: penY });
+            if (trace.length > params.resolution) trace.shift();
+
+            // --- RENDER ---
+            ctx.translate(cx, cy);
+            
+            // Base Curve
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            const range = params.baseCurve.includes('Line') || params.baseCurve.includes('Sine') ? 20 : 15;
+            const startT = t - range;
+            const endT = t + range;
+            for(let i=0; i<=400; i++) {
+                const tt = startT + (i/400)*(endT-startT);
+                const p = getBasePoint(tt);
+                if(i==0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+            }
+            ctx.stroke();
+
+            // Wheel Mech
+            if (params.showMech) {
+                ctx.strokeStyle = '#555';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.arc(wheelCx, wheelCy, params.r, 0, Math.PI*2);
+                ctx.stroke();
+                
+                ctx.beginPath();
+                ctx.moveTo(wheelCx, wheelCy);
+                ctx.lineTo(wheelCx + params.r * Math.sin(totalAngle), wheelCy + params.r * Math.cos(totalAngle)); 
+                ctx.stroke();
+                
+                ctx.strokeStyle = '#888';
+                ctx.beginPath();
+                ctx.moveTo(wheelCx, wheelCy);
+                ctx.lineTo(penX, penY);
+                ctx.stroke();
+                
+                ctx.fillStyle = '#00ff00';
+                ctx.beginPath(); ctx.arc(contactP.x, contactP.y, 3, 0, Math.PI*2); ctx.fill();
+            }
+
+            // Trace
+            if (trace.length > 1) {
+                ctx.strokeStyle = params.color;
+                ctx.lineWidth = params.lineWidth;
+                ctx.shadowBlur = 10; ctx.shadowColor = params.color;
+                ctx.beginPath();
+                ctx.moveTo(trace[0].x, trace[0].y);
+                for(let i=1; i<trace.length; i++) ctx.lineTo(trace[i].x, trace[i].y);
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+            }
+
+            ctx.fillStyle = '#fff';
+            ctx.beginPath(); ctx.arc(penX, penY, 4, 0, Math.PI*2); ctx.fill();
+
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            requestAnimationFrame(draw);
+        }
+
+        // --- EXPORTERS ---
+        function download(content, name, type) {
+            const blob = new Blob([content], {type: type});
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = name;
+            link.click();
+        }
+
+        function exportSVG() {
+            if (trace.length < 2) return;
+            let dPath = "";
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            
+            trace.forEach((p, i) => {
+                if (i===0) dPath += `M ${p.x.toFixed(3)} ${p.y.toFixed(3)} `;
+                else dPath += `L ${p.x.toFixed(3)} ${p.y.toFixed(3)} `;
+                minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
+                maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y);
+            });
+            // Don't force close (Z) as these are often open curves
+
+            const w = (maxX - minX) + 40;
+            const h = (maxY - minY) + 40;
+            const vbX = minX - 20;
+            const vbY = minY - 20;
+
+            const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vbX} ${vbY} ${w} ${h}">
+                <path d="${dPath}" fill="none" stroke="black" stroke-width="1" /></svg>`;
+            
+            download(svg, `roulette_${params.baseCurve.toLowerCase().replace(' ','_')}.svg`, 'image/svg+xml');
+        }
+
+        function exportDXF() {
+            if (trace.length < 2) return;
+            // Open polyline (flag 0)
+            let dxf = "0\nSECTION\n2\nENTITIES\n0\nPOLYLINE\n8\n0\n66\n1\n70\n0\n"; 
+            trace.forEach(p => {
+                dxf += `0\nVERTEX\n8\n0\n10\n${p.x.toFixed(4)}\n20\n${p.y.toFixed(4)}\n30\n0.0\n`;
+            });
+            dxf += "0\nSEQEND\n0\nENDSEC\n0\nEOF\n";
+            download(dxf, `roulette_${params.baseCurve.toLowerCase().replace(' ','_')}.dxf`, 'application/dxf');
+        }
+
+        // --- UI ---
+        const pane = new Tweakpane.Pane({ title: 'Roulette Engine v2' });
+        
+        pane.addInput(params, 'baseCurve', { 
+            options: { 'Line': 'Line', 'Circle': 'Circle', 'Parabola': 'Parabola', 'Sine Wave': 'Sine Wave', 'Ellipse': 'Ellipse', 'Cycloid': 'Cycloid' } 
+        }).on('change', reset);
+        
+        const fWheel = pane.addFolder({ title: 'Wheel' });
+        fWheel.addInput(params, 'r', { min: 10, max: 100, label: 'Radius' });
+        fWheel.addInput(params, 'd', { min: 0, max: 150, label: 'Pen Dist' });
+        fWheel.addInput(params, 'side', { options: { 'Top/Out (+1)': 1, 'Bot/In (-1)': -1 } }).on('change', reset);
+        
+        const fSim = pane.addFolder({ title: 'Simulation' });
+        fSim.addInput(params, 'speed', { min: 0, max: 5 });
+        fSim.addInput(params, 'scale', { min: 10, max: 100, label: 'Curve Scale' }).on('change', reset);
+        fSim.addInput(params, 'resolution', { min: 1000, max: 10000, step: 500, label: 'Trace Buffer' });
+        
+        const fVis = pane.addFolder({ title: 'Visuals' });
+        fVis.addInput(params, 'color');
+        fVis.addInput(params, 'showMech');
+
+        fVis.addButton({ title: 'Clear Trace' }).on('click', reset);
+
+        const fFab = pane.addFolder({ title: 'Fabrication' });
+        fFab.addButton({ title: 'Export Image (PNG)' }).on('click', () => {
+             const link = document.createElement('a');
+             link.download = `roulette_${params.baseCurve.toLowerCase()}.png`;
+             link.href = canvas.toDataURL();
+             link.click();
+        });
+        fFab.addButton({ title: 'Export Vector (SVG)' }).on('click', exportSVG);
+        fFab.addButton({ title: 'Export CAD (DXF)' }).on('click', exportDXF);
+
+        resize();
+        reset();
+        draw();
+
+    </script>
+</body>
+</html>

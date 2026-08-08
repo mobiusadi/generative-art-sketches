@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Architectural Intelligence | Maritime Facade Scheduler</title>
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.1.0/dist/tweakpane.min.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #111; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <script type="module">
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        const params = {
+            divisions: 24,      
+            method: 'Equal Arc', 
+            
+            // Base Geometry
+            a: 5.0,             
+            b: 3.0,
+            
+            // Vertical & Flare
+            floorHeight: 4.0,   
+            offset: 0.25,       
+            
+            // View & logic
+            scale: 40,          
+            panelIndex: 0,
+            tolerance: 0.002, // 2mm
+            
+            // Visuals
+            showAxes: true,
+            showMullions: true,
+            showUpper: true
+        };
+
+        let width, height;
+        let panels = []; 
+        let uniqueTypes = []; // For the schedule
+
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+        }
+        window.addEventListener('resize', resize);
+
+        // --- MATH HELPERS ---
+        function getEllipsePoint(t, a, b) {
+            return { x: a * Math.cos(t), y: b * Math.sin(t) };
+        }
+
+        function generateRing(a, b, N, method) {
+            let ringPoints = [];
+            
+            if (method === 'Parametric (Naive)') {
+                for (let i = 0; i <= N; i++) {
+                    const t = (i / N) * Math.PI * 2;
+                    ringPoints.push(getEllipsePoint(t, a, b));
+                }
+            } else {
+                const steps = 2000;
+                let totalLen = 0;
+                let prevP = getEllipsePoint(0, a, b);
+                const dt = (Math.PI * 2) / steps;
+                const distMap = [{ dist: 0, t: 0 }];
+
+                for (let i = 1; i <= steps; i++) {
+                    const t = i * dt;
+                    const p = getEllipsePoint(t, a, b);
+                    const d = Math.sqrt((p.x - prevP.x)**2 + (p.y - prevP.y)**2);
+                    totalLen += d;
+                    distMap.push({ dist: totalLen, t: t });
+                    prevP = p;
+                }
+
+                const segmentLen = totalLen / N;
+                ringPoints.push(getEllipsePoint(0, a, b));
+                
+                for (let i = 1; i < N; i++) {
+                    const targetDist = i * segmentLen;
+                    for(let k=0; k<distMap.length-1; k++) {
+                        if (distMap[k].dist <= targetDist && distMap[k+1].dist > targetDist) {
+                            const d1 = distMap[k].dist;
+                            const d2 = distMap[k+1].dist;
+                            const t1 = distMap[k].t;
+                            const t2 = distMap[k+1].t;
+                            const ratio = (targetDist - d1) / (d2 - d1);
+                            const foundT = t1 + (t2 - t1) * ratio;
+                            ringPoints.push(getEllipsePoint(foundT, a, b));
+                            break;
+                        }
+                    }
+                }
+                ringPoints.push(getEllipsePoint(Math.PI*2, a, b)); 
+            }
+            return ringPoints;
+        }
+
+        function calculateGeometry() {
+            panels = [];
+            uniqueTypes = [];
+            
+            // 1. Generate Rings
+            const ptsLower = generateRing(params.a, params.b, params.divisions, params.method);
+            const aTop = params.a + params.offset;
+            const bTop = params.b + params.offset;
+            const ptsUpper = generateRing(aTop, bTop, params.divisions, params.method);
+            
+            // 2. Build Panels
+            for (let i = 0; i < params.divisions; i++) {
+                const p1 = ptsLower[i];
+                const p2 = ptsLower[i+1];
+                const p3 = ptsUpper[i+1];
+                const p4 = ptsUpper[i];
+
+                const dx1 = p2.x - p1.x; const dy1 = p2.y - p1.y;
+                const wBottom = Math.sqrt(dx1*dx1 + dy1*dy1);
+
+                const dx2 = p3.x - p4.x; const dy2 = p3.y - p4.y;
+                const wTop = Math.sqrt(dx2*dx2 + dy2*dy2);
+
+                const runX = p4.x - p1.x;
+                const runY = p4.y - p1.y;
+                const run = Math.sqrt(runX*runX + runY*runY); 
+                const rise = params.floorHeight;
+                const slantH = Math.sqrt(run*run + rise*rise);
+                const tiltDeg = (Math.atan(run / rise) * 180 / Math.PI);
+
+                panels.push({
+                    id: i,
+                    wBottom: wBottom,
+                    wTop: wTop,
+                    slantH: slantH,
+                    tilt: tiltDeg,
+                    pts: [p1, p2, p3, p4]
+                });
+            }
+
+            // 3. GROUP PANELS (The Scheduler)
+            // We group by Bottom AND Top width (Trapezoid Logic)
+            panels.forEach((p) => {
+                let foundGroup = false;
+                for (let group of uniqueTypes) {
+                    const dBot = Math.abs(p.wBottom - group.wBottom);
+                    const dTop = Math.abs(p.wTop - group.wTop);
+                    const dH = Math.abs(p.slantH - group.slantH);
+                    
+                    // If dimensions match within tolerance
+                    if (dBot < params.tolerance && dTop < params.tolerance && dH < params.tolerance) {
+                        group.count++;
+                        group.ids.push(p.id); // Track which panels belong to this type
+                        foundGroup = true;
+                        break;
+                    }
+                }
+                if (!foundGroup) {
+                    uniqueTypes.push({ 
+                        wBottom: p.wBottom, 
+                        wTop: p.wTop, 
+                        slantH: p.slantH, 
+                        tilt: p.tilt,
+                        count: 1,
+                        ids: [p.id]
+                    });
+                }
+            });
+
+            // Sort by Size (Largest Bottom Width first)
+            uniqueTypes.sort((a, b) => b.wBottom - a.wBottom);
+        }
+
+        function draw() {
+            calculateGeometry();
+
+            ctx.fillStyle = '#111';
+            ctx.fillRect(0, 0, width, height);
+
+            const cx = width * 0.5; // Plan View Center
+            const cy = height * 0.5;
+            const scale = params.scale;
+
+
+            // --- 1. LEFT SIDE: SCHEDULE TABLE ---
+            const tableX = 40;
+            let tableY = 60;
+            
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 16px monospace';
+            ctx.textAlign = 'left';
+            ctx.fillText("MARITIME SCHEDULE", tableX, tableY);
+            tableY += 30;
+            
+            ctx.fillStyle = '#666';
+            ctx.font = '12px monospace';
+            ctx.fillText(`Tolerance: ±${(params.tolerance*1000).toFixed(1)}mm`, tableX, tableY);
+            tableY += 30;
+
+            // Header
+            ctx.fillStyle = '#888';
+            ctx.fillText("TYPE   BOT(m)   TOP(m)   QTY", tableX, tableY);
+            ctx.beginPath(); ctx.strokeStyle = '#444'; ctx.moveTo(tableX, tableY+5); ctx.lineTo(tableX + 250, tableY+5); ctx.stroke();
+            tableY += 20;
+
+            // Rows
+            const currentSelectedId = panels[params.panelIndex].id;
+            
+            uniqueTypes.forEach((group, index) => {
+                const typeName = `P${String(index+1).padStart(2,'0')}`;
+                
+                // Highlight if current panel belongs to this group
+                const isActive = group.ids.includes(currentSelectedId);
+                ctx.fillStyle = isActive ? '#ffcc00' : '#ccc';
+                
+                ctx.fillText(typeName, tableX, tableY);
+                ctx.fillText(group.wBottom.toFixed(3), tableX + 60, tableY);
+                ctx.fillText(group.wTop.toFixed(3), tableX + 130, tableY);
+                ctx.fillText(`${group.count}x`, tableX + 200, tableY);
+                
+                tableY += 20;
+            });
+            
+            tableY += 20;
+            ctx.fillStyle = '#fff';
+            ctx.fillText(`TOTAL: ${panels.length} Panels`, tableX, tableY);
+            ctx.fillText(`TYPES: ${uniqueTypes.length} Unique`, tableX, tableY+20);
+
+
+            // --- 2. CENTER: PLAN VIEW ---
+            
+            // Axes
+            if (params.showAxes) {
+                ctx.strokeStyle = '#222';
+                ctx.setLineDash([5, 5]);
+                ctx.beginPath(); ctx.moveTo(width*0.25, cy); ctx.lineTo(width*0.75, cy); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(cx, height*0.2); ctx.lineTo(cx, height*0.8); ctx.stroke();
+                ctx.setLineDash([]);
+            }
+
+            panels.forEach((p, idx) => {
+                const [p1, p2, p3, p4] = p.pts;
+                const isSelected = idx === params.panelIndex;
+                ctx.lineWidth = isSelected ? 3 : 1;
+                
+                // Lower Edge (Cyan)
+                ctx.strokeStyle = isSelected ? '#fff' : '#00ffff';
+                ctx.beginPath(); ctx.moveTo(cx + p1.x*scale, cy - p1.y*scale); ctx.lineTo(cx + p2.x*scale, cy - p2.y*scale); ctx.stroke();
+
+                // Upper Edge (Magenta)
+                if (params.showUpper) {
+                    ctx.strokeStyle = isSelected ? '#fff' : '#ff00ff';
+                    ctx.beginPath(); ctx.moveTo(cx + p4.x*scale, cy - p4.y*scale); ctx.lineTo(cx + p3.x*scale, cy - p3.y*scale); ctx.stroke();
+                }
+
+                // Mullions
+                if (params.showMullions) {
+                    ctx.strokeStyle = isSelected ? '#fff' : '#ffcc00';
+                    ctx.globalAlpha = 0.5;
+                    ctx.beginPath(); ctx.moveTo(cx + p1.x*scale, cy - p1.y*scale); ctx.lineTo(cx + p4.x*scale, cy - p4.y*scale); ctx.stroke();
+                    ctx.globalAlpha = 1.0;
+                }
+            });
+            
+            ctx.fillStyle = '#666'; ctx.textAlign = 'center';
+            ctx.fillText("PLAN VIEW", cx, height - 30);
+
+
+            // --- 3. RIGHT: PANEL INSPECTOR ---
+            const panel = panels[params.panelIndex];
+            const px = width * 0.85; 
+            const py = height * 0.5;
+            const pScale = 20; 
+
+            // Background
+            ctx.fillStyle = '#1a1a1a'; ctx.fillRect(width * 0.72, 0, width * 0.28, height);
+            ctx.strokeStyle = '#333'; ctx.beginPath(); ctx.moveTo(width * 0.72, 0); ctx.lineTo(width * 0.72, height); ctx.stroke();
+
+            // Find Type Name
+            let typeStr = "??";
+            uniqueTypes.forEach((g, i) => { if(g.ids.includes(panel.id)) typeStr = `P${String(i+1).padStart(2,'0')}`; });
+
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 16px monospace';
+            ctx.fillText(`TYPE ${typeStr}`, px, 40);
+            ctx.font = '12px monospace';
+            ctx.fillStyle = '#888';
+            ctx.fillText(`(Instance #${panel.id + 1})`, px, 60);
+
+            // Draw Unrolled Shape
+            const halfWTop = (panel.wTop / 2) * pScale;
+            const halfWBot = (panel.wBottom / 2) * pScale;
+            const hDisplay = panel.slantH * pScale;
+
+            const x1 = px - halfWBot; const y1 = py + hDisplay/2; 
+            const x2 = px + halfWBot; const y2 = py + hDisplay/2; 
+            const x3 = px + halfWTop; const y3 = py - hDisplay/2; 
+            const x4 = px - halfWTop; const y4 = py - hDisplay/2; 
+
+            ctx.fillStyle = 'rgba(0, 255, 255, 0.1)';
+            ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.lineTo(x3, y3); ctx.lineTo(x4, y4); ctx.closePath(); ctx.fill();
+            ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+
+            // Dims
+            ctx.fillStyle = '#00ffff'; ctx.fillText(`${panel.wBottom.toFixed(3)}m`, px, y1 + 20); 
+            ctx.fillStyle = '#ff00ff'; ctx.fillText(`${panel.wTop.toFixed(3)}m`, px, y3 - 10); 
+            
+            // Slant H visual
+            ctx.strokeStyle = '#ffcc00'; ctx.lineWidth=1;
+            ctx.beginPath(); ctx.moveTo(x2 + 20, y2); ctx.lineTo(x3 + 20, y3); ctx.stroke();
+            ctx.fillStyle = '#ffcc00'; ctx.fillText(`H: ${panel.slantH.toFixed(3)}`, px + halfWBot + 40, py);
+
+            // Angles
+            ctx.fillStyle = '#888';
+            ctx.fillText(`Tilt: ${panel.tilt.toFixed(1)}°`, px, py + hDisplay/2 + 50);
+        }
+
+        // --- UI ---
+        const pane = new Tweakpane.Pane({ title: 'Maritime Facade' });
+        
+        pane.addInput(params, 'method', { options: { 'Equal Arc': 'Equal Arc', 'Parametric (Naive)': 'Parametric (Naive)' } }).on('change', draw);
+        pane.addInput(params, 'divisions', { min: 8, max: 60, step: 1 }).on('change', () => { params.panelIndex = 0; draw(); });
+        
+        const fDims = pane.addFolder({ title: 'Geometry' });
+        fDims.addInput(params, 'a', { min: 1, max: 10 }).on('change', draw);
+        fDims.addInput(params, 'b', { min: 1, max: 10 }).on('change', draw);
+        fDims.addInput(params, 'floorHeight', { min: 2, max: 6 }).on('change', draw);
+        fDims.addInput(params, 'offset', { min: 0, max: 2, label: 'Flare' }).on('change', draw);
+        fDims.addInput(params, 'tolerance', { min: 0.0001, max: 0.01, step: 0.0001 }).on('change', draw);
+
+        const fInsp = pane.addFolder({ title: 'Selector' });
+        fInsp.addInput(params, 'panelIndex', { min: 0, max: 60, step: 1 }).on('change', (ev) => {
+            if (ev.value >= params.divisions) params.panelIndex = params.divisions - 1;
+            draw();
+        });
+
+        const fVis = pane.addFolder({ title: 'Visuals' });
+        fVis.addInput(params, 'showMullions').on('change', draw);
+        fVis.addInput(params, 'showUpper').on('change', draw);
+
+        fVis.addButton({ title: 'Export Image' }).on('click', () => {
+             const link = document.createElement('a');
+             link.download = 'maritime_schedule.png';
+             link.href = canvas.toDataURL();
+             link.click();
+        });
+
+        resize();
+        draw();
+    </script>
+</body>
+</html>

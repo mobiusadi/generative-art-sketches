@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Architectural Intelligence | Dichroic</title>
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.1.0/dist/tweakpane.min.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #1a1a1a; }
+        canvas { display: block; width: 100%; height: 100%; }
+        .home-btn {
+            position: fixed; top: 20px; left: 20px;
+            color: #fff; text-decoration: none; font-family: monospace;
+            font-size: 14px; z-index: 1000; opacity: 0.5; transition: 0.3s;
+            mix-blend-mode: difference; border: 1px solid rgba(255,255,255,0.3);
+            padding: 5px 10px; background: rgba(0,0,0,0.5);
+        }
+        .home-btn:hover { opacity: 1.0; background: #fff; color: #000; }
+    </style>
+</head>
+<body>
+
+    <a href="index.html" class="home-btn">← Home</a>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        // --- 1. UTILITIES ---
+        const MathUtils = {
+            mapRange: (v, iMin, iMax, oMin, oMax) => ((v - iMin) / (iMax - iMin) * (oMax - oMin) + oMin),
+        };
+
+        // Seeded Random Class to allow separate seeds for Layout vs Color
+        class Random {
+            constructor(seed = 12345) { this.setSeed(seed); }
+            setSeed(seed) {
+                this.m = 0x80000000; this.a = 1103515245; this.c = 12345;
+                this.state = seed ? seed : Math.floor(Math.random() * (this.m - 1));
+            }
+            nextFloat() {
+                this.state = (this.a * this.state + this.c) % this.m;
+                return this.state / (this.m - 1);
+            }
+            range(min, max) { return min + this.nextFloat() * (max - min); }
+            pick(arr) { return arr[Math.floor(this.nextFloat() * arr.length)]; }
+        }
+
+        // --- 2. COLOR ENGINE ---
+        // Key colors for standard scientific palettes
+        const PALETTES = {
+            salinity: ['#3C5488', '#469D76', '#8F9B6B', '#E5BC4D', '#E47146', '#B03A2E'],
+            magma: ['#000004', '#140e36', '#3b0f70', '#641a80', '#8c2981', '#b73779', '#de4968', '#f7705c', '#fe9f6d', '#fcfdbf'],
+            inferno: ['#000004', '#160b39', '#420a68', '#6a176e', '#932667', '#bc3754', '#dd513a', '#f37819', '#fca50a', '#fcffa4'],
+            plasma: ['#0d0887', '#46039f', '#7301a8', '#9c179e', '#bd3786', '#d8576b', '#ed7953', '#fb9f3a', '#fdc927', '#f0f921'],
+            viridis: ['#440154', '#482878', '#3e4989', '#31688e', '#26828e', '#1f9e89', '#35b779', '#6dcd59', '#b4de2c', '#fde725'],
+            bone: ['#000000', '#2f2f35', '#5d5d6a', '#8b8ba0', '#b9b9d5', '#e7e7ff', '#ffffff'],
+            spring: ['#ff00ff', '#ff33cc', '#ff6699', '#ff9966', '#ffcc33', '#ffff00'],
+            summer: ['#008066', '#1aa366', '#33c666', '#4de966', '#80ff66', '#ffff66'],
+            autumn: ['#ff0000', '#ff3300', '#ff6600', '#ff9900', '#ffcc00', '#ffff00'],
+            winter: ['#0000ff', '#0033ff', '#0066ff', '#0099ff', '#00ccff', '#00ffff']
+        };
+
+        // Helper to generate N shades from the palette keys
+        function generateColors(name, steps=20) {
+            const keys = PALETTES[name] || PALETTES['magma'];
+            const offCanvas = document.createElement('canvas');
+            offCanvas.width = steps; offCanvas.height = 1;
+            const ctx = offCanvas.getContext('2d');
+            const grad = ctx.createLinearGradient(0, 0, steps, 0);
+            keys.forEach((c, i) => grad.addColorStop(i / (keys.length - 1), c));
+            ctx.fillStyle = grad; ctx.fillRect(0, 0, steps, 1);
+            
+            const data = ctx.getImageData(0, 0, steps, 1).data;
+            const colors = [];
+            for(let i=0; i<data.length; i+=4) {
+                colors.push(`rgb(${data[i]}, ${data[i+1]}, ${data[i+2]})`);
+            }
+            return colors;
+        }
+
+        // --- 3. MAIN SKETCH ---
+        const canvas = document.getElementById('canvas');
+        const context = canvas.getContext('2d');
+        
+        const params = {
+            rows: 12,
+            minWidth: 50,
+            maxWidth: 300,
+            gap: 4,
+            geoSeed: 10,
+            colorSeed: 50,
+            lineColor: '#1a1a1a',
+            gradient: true,
+            randomDirection: true,
+            animateLight: true,
+            speed: 2,
+            palette: 'salinity',
+        };
+
+        let width, height, frame = 0;
+        let paletteColors = [];
+
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // Cache colors when palette changes
+        function updatePalette() {
+            paletteColors = generateColors(params.palette, 20);
+        }
+        updatePalette();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            frame++;
+
+            // Create two independent random streams
+            const rngGeo = new Random(params.geoSeed);
+            const rngColor = new Random(params.colorSeed);
+
+            // Background
+            context.fillStyle = params.lineColor;
+            context.fillRect(0, 0, width, height);
+
+            const rowHeight = height / params.rows;
+
+            for (let r = 0; r < params.rows; r++) {
+                const y = r * rowHeight;
+                let x = 0;
+
+                while (x < width) {
+                    // Geometry Logic (uses rngGeo)
+                    let w = rngGeo.range(params.minWidth, params.maxWidth);
+                    if (x + w > width) w = width - x;
+
+                    // Color Logic (uses rngColor)
+                    const c1 = rngColor.pick(paletteColors);
+                    const c2 = rngColor.pick(paletteColors);
+
+                    if (params.gradient) {
+                        let grad;
+                        const rectH = rowHeight - params.gap;
+                        const rectW = w - params.gap;
+
+                        let dir;
+                        if (params.randomDirection) {
+                            dir = rngColor.pick(['vertical', 'horizontal', 'diagDown', 'diagUp']);
+                        } else {
+                            dir = 'vertical';
+                        }
+
+                        // Gradient Math
+                        if (dir === 'vertical')      grad = context.createLinearGradient(x, y, x, y + rectH);
+                        else if (dir === 'horizontal') grad = context.createLinearGradient(x, y, x + rectW, y);
+                        else if (dir === 'diagDown')   grad = context.createLinearGradient(x, y, x + rectW, y + rectH);
+                        else if (dir === 'diagUp')     grad = context.createLinearGradient(x, y + rectH, x + rectW, y);
+
+                        // Animation Logic (The Shimmer)
+                        let stopPoint = 0.5;
+                        if (params.animateLight) {
+                            // Using frame count to oscillate the gradient stop
+                            const wave = Math.sin(frame * params.speed * 0.01 + x * 0.002 + y * 0.002);
+                            stopPoint = MathUtils.mapRange(wave, -1, 1, 0.2, 0.9);
+                        }
+
+                        grad.addColorStop(0, c1);
+                        grad.addColorStop(stopPoint, c2); 
+                        context.fillStyle = grad;
+                    } else {
+                        context.fillStyle = c1;
+                    }
+
+                    context.fillRect(x, y, w - params.gap, rowHeight - params.gap);
+                    x += w;
+                }
+            }
+        }
+
+        // --- 4. CONTROLS ---
+        const pane = new Tweakpane.Pane({ title: 'Dichroic Controls' });
+
+        const f1 = pane.addFolder({ title: 'Structure' });
+        f1.addInput(params, 'rows', { min: 1, max: 50, step: 1 });
+        f1.addInput(params, 'minWidth', { min: 10, max: 200 });
+        f1.addInput(params, 'maxWidth', { min: 200, max: 800 });
+        f1.addInput(params, 'gap', { min: 0, max: 20 });
+        f1.addButton({ title: 'New Layout' }).on('click', () => {
+            params.geoSeed = Math.floor(Math.random() * 1000);
+            pane.refresh();
+        });
+
+        const f2 = pane.addFolder({ title: 'Palette' });
+        f2.addInput(params, 'palette', { 
+            options: { Salinity: 'salinity', Magma: 'magma', Inferno: 'inferno', Plasma: 'plasma', Viridis: 'viridis', Bone: 'bone', Spring: 'spring', Summer: 'summer', Autumn: 'autumn', Winter: 'winter'}
+        }).on('change', updatePalette);
+        f2.addInput(params, 'gradient');
+        f2.addInput(params, 'randomDirection');
+        f2.addInput(params, 'lineColor');
+        f2.addButton({ title: 'New Colors' }).on('click', () => {
+            params.colorSeed = Math.floor(Math.random() * 1000);
+            pane.refresh();
+        });
+
+        const f3 = pane.addFolder({ title: 'Animation' });
+        f3.addInput(params, 'animateLight');
+        f3.addInput(params, 'speed', { min: 0, max: 10 });
+
+        animate();
+
+    </script>
+</body>
+</html>

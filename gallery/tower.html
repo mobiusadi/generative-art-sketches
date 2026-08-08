@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Architectural Intelligence | Tower Concept</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.1.0/dist/tweakpane.min.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #222; }
+        canvas { display: block; width: 100%; height: 100%; }
+        .home-btn {
+            position: fixed; top: 20px; left: 20px;
+            color: #fff; text-decoration: none; font-family: monospace;
+            font-size: 14px; z-index: 1000; opacity: 0.8; transition: 0.3s;
+            mix-blend-mode: difference; border: 1px solid rgba(255,255,255,0.5);
+            padding: 5px 10px; background: rgba(0,0,0,0.2);
+        }
+        .home-btn:hover { opacity: 1.0; background: #fff; color: #000; }
+    </style>
+</head>
+<body>
+
+    <a href="index.html" class="home-btn">← Home</a>
+    <div id="container"></div>
+
+    <script>
+        // --- 1. SCENE SETUP ---
+        const container = document.getElementById('container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color('#222222');
+        scene.fog = new THREE.Fog('#222222', 150, 400); // Relaxed fog
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 2000);
+        camera.position.set(80, 100, 120);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        container.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+
+        // Lights
+        const ambientLight = new THREE.AmbientLight(0x404040, 1.5);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+        dirLight.position.set(50, 100, 50);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 2048;
+        dirLight.shadow.mapSize.height = 2048;
+        dirLight.shadow.camera.top = 100;
+        dirLight.shadow.camera.bottom = -100;
+        dirLight.shadow.camera.left = -100;
+        dirLight.shadow.camera.right = 100;
+        scene.add(dirLight);
+
+        const gridHelper = new THREE.GridHelper(200, 50, 0x444444, 0x222222);
+        scene.add(gridHelper);
+
+        // --- 2. GENERATIVE LOGIC ---
+        const params = {
+            floors: 80,
+            floorHeight: 1.0,
+            sides: 3,
+            radius: 8,
+            innerRatio: 0.6,
+            asymmetry: 2.0,
+            twist: 120,
+            taper: 0.5,
+            color: '#ffffff',
+            wireframe: true,
+            glassOpacity: 0.15
+        };
+
+        let towerGroup = new THREE.Group();
+        let exportGroup = new THREE.Group(); // Holds only the solid geometry for export
+        towerGroup.add(exportGroup);
+        scene.add(towerGroup);
+
+        function createFloorShape() {
+            const shape = new THREE.Shape();
+            const sides = params.sides;
+            const rOuter = params.radius;
+            const rInner = params.radius * params.innerRatio;
+
+            for (let i = 0; i < sides * 2; i++) {
+                const angle = (i / (sides * 2)) * Math.PI * 2;
+                let r = (i % 2 === 0) ? rOuter : rInner;
+                if (i === 0) r *= params.asymmetry;
+                const x = Math.cos(angle) * r;
+                const y = Math.sin(angle) * r;
+                if (i === 0) shape.moveTo(x, y); else shape.lineTo(x, y);
+            }
+            shape.closePath();
+            return shape;
+        }
+
+        function generateTower() {
+            exportGroup.clear();
+            // Clear wireframes separately
+            for (let i = towerGroup.children.length - 1; i >= 0; i--) {
+                if (towerGroup.children[i].type === 'LineSegments') {
+                    towerGroup.remove(towerGroup.children[i]);
+                }
+            }
+
+            const shape = createFloorShape();
+            const extrudeSettings = { steps: 1, depth: params.floorHeight * 0.95, bevelEnabled: false };
+            const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+            geometry.rotateX(Math.PI / 2); // Orient horizontal
+
+            const glassMat = new THREE.MeshPhysicalMaterial({
+                color: params.color,
+                metalness: 0.2, roughness: 0.1,
+                transparent: true, opacity: params.glassOpacity,
+                side: THREE.DoubleSide
+            });
+            const edgeMat = new THREE.LineBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.2 });
+
+            for (let i = 0; i < params.floors; i++) {
+                const progress = i / (params.floors - 1);
+                const mesh = new THREE.Mesh(geometry, glassMat);
+                
+                mesh.position.y = i * params.floorHeight;
+                mesh.rotation.y = (params.twist * Math.PI / 180) * progress;
+                const s = 1.0 - (1.0 - params.taper) * progress;
+                mesh.scale.set(s, 1, s);
+                
+                mesh.castShadow = true;
+                mesh.receiveShadow = true;
+                
+                // Add solid mesh to export group
+                exportGroup.add(mesh);
+
+                if (params.wireframe) {
+                    const edges = new THREE.EdgesGeometry(geometry);
+                    const line = new THREE.LineSegments(edges, edgeMat);
+                    line.position.copy(mesh.position);
+                    line.rotation.copy(mesh.rotation);
+                    line.scale.copy(mesh.scale);
+                    towerGroup.add(line);
+                }
+            }
+        }
+
+        // --- 3. CUSTOM DXF EXPORTER ---
+        // This manually writes a .dxf file string compatible with SketchUp
+        function exportDXF() {
+            let output = "";
+            // DXF Header
+            output += "0\nSECTION\n2\nENTITIES\n";
+
+            exportGroup.updateMatrixWorld(true);
+
+            exportGroup.traverse((child) => {
+                if (child.isMesh) {
+                    const geom = child.geometry;
+                    const attr = geom.attributes.position;
+                    const index = geom.index;
+                    
+                    // Helper to get transformed vertex
+                    const getV = (idx) => {
+                        const v = new THREE.Vector3();
+                        v.fromBufferAttribute(attr, idx);
+                        v.applyMatrix4(child.matrixWorld);
+                        return v;
+                    };
+
+                    if (index) {
+                        // Indexed Geometry
+                        for (let i = 0; i < index.count; i += 3) {
+                            const v1 = getV(index.getX(i));
+                            const v2 = getV(index.getX(i+1));
+                            const v3 = getV(index.getX(i+2));
+                            writeFace(output, v1, v2, v3);
+                        }
+                    } else {
+                        // Non-indexed Geometry
+                        for (let i = 0; i < attr.count; i += 3) {
+                            const v1 = getV(i);
+                            const v2 = getV(i+1);
+                            const v3 = getV(i+2);
+                            writeFace(output, v1, v2, v3);
+                        }
+                    }
+                }
+            });
+
+            // Footer
+            output += "0\nENDSEC\n0\nEOF";
+
+            // Add faces to output string
+            function writeFace(str, v1, v2, v3) {
+                output += "0\n3DFACE\n";
+                output += "8\n0\n"; // Layer 0
+                output += `10\n${v1.x}\n20\n${v1.y}\n30\n${v1.z}\n`;
+                output += `11\n${v2.x}\n21\n${v2.y}\n31\n${v2.z}\n`;
+                output += `12\n${v3.x}\n22\n${v3.y}\n32\n${v3.z}\n`;
+                output += `13\n${v3.x}\n23\n${v3.y}\n33\n${v3.z}\n`; // 4th point = 3rd point for triangles
+            }
+
+            saveString(output, `tower-${Date.now()}.dxf`);
+        }
+
+        function saveString(text, filename) {
+            const blob = new Blob([text], { type: 'text/plain' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = filename;
+            link.click();
+        }
+
+        // --- 4. CONTROLS ---
+        const pane = new Tweakpane.Pane({ title: 'Tower Generator' });
+
+        const f1 = pane.addFolder({ title: 'Footprint' });
+        f1.addInput(params, 'sides', { min: 3, max: 8, step: 1 }).on('change', generateTower);
+        f1.addInput(params, 'radius', { min: 4, max: 15 }).on('change', generateTower);
+        f1.addInput(params, 'innerRatio', { min: 0.3, max: 1.0 }).on('change', generateTower);
+        f1.addInput(params, 'asymmetry', { min: 1.0, max: 4.0 }).on('change', generateTower);
+
+        const f2 = pane.addFolder({ title: 'Morphology' });
+        f2.addInput(params, 'floors', { min: 20, max: 120, step: 1 }).on('change', generateTower);
+        f2.addInput(params, 'twist', { min: -180, max: 360 }).on('change', generateTower);
+        f2.addInput(params, 'taper', { min: 0.2, max: 1.5 }).on('change', generateTower);
+        
+        const f3 = pane.addFolder({ title: 'Export' });
+        f3.addInput(params, 'glassOpacity', { min: 0.1, max: 1.0, label: 'View Opacity' }).on('change', generateTower);
+        f3.addButton({ title: 'Download .DXF (Sketchup)' }).on('click', exportDXF);
+
+        generateTower();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+    </script>
+</body>
+</html>

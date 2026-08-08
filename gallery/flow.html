@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Architectural Intelligence | Flow</title>
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.1.0/dist/tweakpane.min.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
+        canvas { display: block; width: 100%; height: 100%; }
+        
+        .home-btn {
+            position: fixed; top: 20px; left: 20px;
+            color: #fff; text-decoration: none; font-family: monospace;
+            font-size: 14px; z-index: 1000; opacity: 0.5; transition: 0.3s;
+            mix-blend-mode: difference; border: 1px solid rgba(255,255,255,0.3);
+            padding: 5px 10px; background: rgba(0,0,0,0.5);
+        }
+        .home-btn:hover { opacity: 1.0; background: #fff; color: #000; }
+    </style>
+</head>
+<body>
+
+    <a href="index.html" class="home-btn">← Home</a>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        // --- 1. MATH & NOISE UTILITIES ---
+        const MathUtils = {
+            mapRange: (v, iMin, iMax, oMin, oMax) => ((v - iMin) / (iMax - iMin) * (oMax - oMin) + oMin),
+            clamp: (v, min, max) => Math.max(min, Math.min(max, v))
+        };
+
+        // Minimal Simplex Noise implementation for the browser
+        const Simplex = (function() {
+            const F3 = 1.0 / 3.0, G3 = 1.0 / 6.0;
+            const p = new Uint8Array([151,160,137,91,90,15,131,13,201,95,96,53,194,233,7,225,140,36,103,30,69,142,8,99,37,240,21,10,23,190,6,148,247,120,234,75,0,26,197,62,94,252,219,203,117,35,11,32,57,177,33,88,237,149,56,87,174,20,125,136,171,168,68,175,74,165,71,134,139,48,27,166,77,146,158,231,83,111,229,122,60,211,133,230,220,105,92,41,55,46,245,40,244,102,143,54,65,25,63,161,1,216,80,73,209,76,132,187,208,89,18,169,200,196,135,130,116,188,159,86,164,100,109,198,173,186,3,64,52,217,226,250,124,123,5,202,38,147,118,126,255,82,85,212,207,206,59,227,47,16,58,17,182,189,28,42,223,183,170,213,119,248,152,2,44,154,163,70,221,153,101,155,167,43,172,9,129,22,39,253,19,98,108,110,79,113,224,232,178,185,112,104,218,246,97,228,251,34,242,193,238,210,144,12,191,179,162,241,81,51,145,235,249,14,239,107,49,192,214,31,181,199,106,157,184,84,204,176,115,121,50,45,127,4,150,254,138,236,205,93,222,114,67,29,24,72,243,141,128,195,78,66,215,61,156,180]);
+            const perm = new Uint8Array(512);
+            const grad3 = new Float32Array([1,1,0,-1,1,0,1,-1,0,-1,-1,0,1,0,1,-1,0,1,1,0,-1,-1,0,-1,0,1,1,0,-1,1,0,1,-1,0,-1,-1]);
+            for(let i=0; i<512; i++) perm[i] = p[i & 255];
+            
+            return {
+                noise3D(x, y, z) {
+                    let n0, n1, n2, n3;
+                    const s = (x + y + z) * F3;
+                    const i = Math.floor(x + s), j = Math.floor(y + s), k = Math.floor(z + s);
+                    const t = (i + j + k) * G3;
+                    const X0 = i - t, Y0 = j - t, Z0 = k - t;
+                    const x0 = x - X0, y0 = y - Y0, z0 = z - Z0;
+                    let i1, j1, k1, i2, j2, k2;
+                    if(x0>=y0){ if(y0>=z0){ i1=1; j1=0; k1=0; i2=1; j2=1; k2=0; } else if(x0>=z0){ i1=1; j1=0; k1=0; i2=1; j2=0; k2=1; } else { i1=0; j1=0; k1=1; i2=1; j2=0; k2=1; } }
+                    else { if(y0<z0){ i1=0; j1=0; k1=1; i2=0; j2=1; k2=1; } else if(x0<z0){ i1=0; j1=1; k1=0; i2=0; j2=1; k2=1; } else { i1=0; j1=1; k1=0; i2=1; j2=1; k2=0; } }
+                    const x1 = x0 - i1 + G3, y1 = y0 - j1 + G3, z1 = z0 - k1 + G3;
+                    const x2 = x0 - i2 + 2.0*G3, y2 = y0 - j2 + 2.0*G3, z2 = z0 - k2 + 2.0*G3;
+                    const x3 = x0 - 1.0 + 3.0*G3, y3 = y0 - 1.0 + 3.0*G3, z3 = z0 - 1.0 + 3.0*G3;
+                    const ii = i & 255, jj = j & 255, kk = k & 255;
+                    
+                    function calc(ii, jj, kk, x, y, z) {
+                        const t = 0.6 - x*x - y*y - z*z;
+                        if(t < 0) return 0;
+                        const gi = (perm[ii+perm[jj+perm[kk]]] % 12) * 3;
+                        return Math.pow(t, 4) * (grad3[gi]*x + grad3[gi+1]*y + grad3[gi+2]*z);
+                    }
+                    n0 = calc(ii, jj, kk, x0, y0, z0);
+                    n1 = calc(ii+i1, jj+j1, kk+k1, x1, y1, z1);
+                    n2 = calc(ii+i2, jj+j2, kk+k2, x2, y2, z2);
+                    n3 = calc(ii+1, jj+1, kk+1, x3, y3, z3);
+                    return 32.0 * (n0 + n1 + n2 + n3);
+                }
+            };
+        })();
+
+        // --- 2. PALETTE GENERATION ---
+        const PALETTES_DATA = {
+            bone: ['#000000', '#2f2f35', '#5d5d6a', '#8b8ba0', '#b9b9d5', '#e7e7ff', '#ffffff'],
+            jet: ['#00008f', '#0000ff', '#007fff', '#00ffff', '#7fffff', '#ffff7f', '#ffff00', '#ff7f00', '#ff0000', '#7f0000'],
+            magma: ['#000004', '#140e36', '#3b0f70', '#641a80', '#8c2981', '#b73779', '#de4968', '#f7705c', '#fe9f6d', '#fcfdbf'],
+            viridis: ['#440154', '#482878', '#3e4989', '#31688e', '#26828e', '#1f9e89', '#35b779', '#6dcd59', '#b4de2c', '#fde725']
+        };
+
+        function generateGradient(name, steps) {
+            const keys = PALETTES_DATA[name] || PALETTES_DATA['bone'];
+            const offCanvas = document.createElement('canvas');
+            offCanvas.width = steps;
+            offCanvas.height = 1;
+            const ctx = offCanvas.getContext('2d');
+            const grad = ctx.createLinearGradient(0, 0, steps, 0);
+            keys.forEach((c, i) => grad.addColorStop(i / (keys.length - 1), c));
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, steps, 1);
+            
+            const data = ctx.getImageData(0, 0, steps, 1).data;
+            const colors = [];
+            for(let i=0; i<data.length; i+=4) {
+                colors.push(`rgb(${data[i]}, ${data[i+1]}, ${data[i+2]})`);
+            }
+            return colors;
+        }
+
+        // --- 3. MAIN APP ---
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let points = [];
+        let currentColors = [];
+
+        // Parameters
+        const params = {
+            cols: 72,
+            rows: 36,
+            amplitude: 90,
+            frequency: 0.002,
+            speed: 2,
+            minWidth: 2,
+            maxWidth: 20,
+            palette: 'bone'
+        };
+
+        class Point {
+            constructor({ x, y, ix, iy }) {
+                this.x = x; this.y = y;
+                this.ix = ix; this.iy = iy;
+                this.lineWidth = 1;
+                this.color = '#fff';
+            }
+        }
+
+        function initGrid() {
+            points = [];
+            
+            // Layout calculations
+            const gw = width * 0.8;
+            const gh = height * 0.8;
+            const cw = gw / (params.cols - 1);
+            const ch = gh / (params.rows - 1);
+            const mx = (width - gw) * 0.5;
+            const my = (height - gh) * 0.5;
+
+            // Generate Grid
+            for (let i = 0; i < params.cols * params.rows; i++) {
+                const c = i % params.cols;
+                const r = Math.floor(i / params.cols);
+                const x = mx + c * cw;
+                const y = my + r * ch;
+                points.push(new Point({ x, y, ix: x, iy: y }));
+            }
+            
+            // Refresh Palette
+            updatePalette();
+        }
+
+        function updatePalette() {
+            // Number of shades depends on amplitude to ensure smooth mapping
+            const nShades = Math.max(params.amplitude * 2, 20); 
+            currentColors = generateGradient(params.palette, nShades);
+        }
+
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+            initGrid();
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // Animation Loop
+        let frame = 0;
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            frame++;
+
+            ctx.fillStyle = 'black';
+            ctx.fillRect(0, 0, width, height);
+
+            const { amplitude, frequency, speed, minWidth, maxWidth } = params;
+
+            points.forEach(point => {
+                // Calculate Noise (Simplex noise returns -1 to 1)
+                // We scale inputs by frequency and time by speed
+                const n = Simplex.noise3D(
+                    point.ix * frequency, 
+                    point.iy * frequency, 
+                    frame * speed * 0.01 // Scale down speed for sensible Tweakpane range
+                );
+
+                // Displace Point
+                const displacement = n * amplitude;
+                point.x = point.ix + displacement;
+                point.y = point.iy + displacement;
+
+                // Map noise to visual properties
+                point.lineWidth = MathUtils.mapRange(displacement, -amplitude, amplitude, minWidth, maxWidth);
+                
+                // Map noise to color index
+                const colorIdx = Math.floor(
+                    MathUtils.mapRange(displacement, -amplitude, amplitude, 0, currentColors.length - 1)
+                );
+                point.color = currentColors[MathUtils.clamp(colorIdx, 0, currentColors.length - 1)];
+            });
+
+            // Draw Lines
+            ctx.lineCap = 'round';
+            
+            for (let r = 0; r < params.rows; r++) {
+                for (let c = 0; c < params.cols - 1; c++) {
+                    const curr = points[r * params.cols + c];
+                    const next = points[r * params.cols + c + 1];
+
+                    ctx.beginPath();
+                    ctx.strokeStyle = curr.color;
+                    ctx.lineWidth = curr.lineWidth;
+                    
+                    ctx.moveTo(curr.x, curr.y);
+                    ctx.lineTo(next.x, next.y);
+                    ctx.stroke();
+                }
+            }
+        }
+
+        // --- 4. CONTROLS ---
+        const pane = new Tweakpane.Pane({ title: 'Flow Controls' });
+
+        const f1 = pane.addFolder({ title: 'Noise' });
+        f1.addInput(params, 'frequency', { min: 0.0001, max: 0.01 });
+        f1.addInput(params, 'amplitude', { min: 10, max: 200 })
+          .on('change', updatePalette); // Re-gen palette if amplitude changes range drastically
+        f1.addInput(params, 'speed', { min: 0, max: 10 });
+
+        const f2 = pane.addFolder({ title: 'Style' });
+        f2.addInput(params, 'minWidth', { min: 0.1, max: 10 });
+        f2.addInput(params, 'maxWidth', { min: 5, max: 50 });
+        f2.addInput(params, 'palette', {
+            options: { Bone: 'bone', Jet: 'jet', Magma: 'magma', Viridis: 'viridis' }
+        }).on('change', updatePalette);
+
+        animate();
+
+    </script>
+</body>
+</html>

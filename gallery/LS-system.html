@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Architectural Intelligence | L-System Engine</title>
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.1.0/dist/tweakpane.min.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #111; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <script type="module">
+        import colormapPkg from 'https://esm.sh/colormap@2.3.2';
+        const createColormap = colormapPkg.default || colormapPkg;
+
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // --- DEFINITIONS (The DNA) ---
+        const PRESETS = {
+            'Hilbert': {
+                axiom: 'A',
+                rules: { A: '-BF+AFA+FB-', B: '+AF-BFB-FA+' },
+                angle: 90, startAngle: 0, drawChars: ['F']
+            },
+            'Peano': {
+                axiom: 'X',
+                rules: { X: 'XFYFX+F+YFXFY-F-XFYFX', Y: 'YFXFY-F-XFYFX+F+YFXFY' },
+                angle: 90, startAngle: 0, drawChars: ['F']
+            },
+            'Dragon': {
+                axiom: 'FX',
+                rules: { X: 'X+YF+', Y: '-FX-Y' },
+                angle: 90, startAngle: 0, drawChars: ['F']
+            },
+            'Gosper (Hex)': {
+                axiom: 'A',
+                rules: { A: 'A-B--B+A++AA+B-', B: '+A-BB--B-A++A+B' },
+                angle: 60, startAngle: 0, drawChars: ['A', 'B']
+            },
+            'Arrow (Sierpinski)': {
+                axiom: 'A',
+                rules: { A: 'B-A-B', B: 'A+B+A' },
+                angle: 60, startAngle: 0, drawChars: ['A', 'B']
+            }
+        };
+
+        // --- STATE ---
+        const params = {
+            preset: 'Hilbert',
+            iterations: 5,
+            drawSpeed: 50,
+            
+            // COLOR & STYLE
+            mode: 'Gradient', // 'Gradient' or 'Monochrome'
+            palette: 'magma',
+            monoColor: '#00ffff',
+            varyTint: true,    // Variation in monochrome?
+            
+            backgroundColor: '#111111',
+            lineWidth: 2,
+            opacity: 1.0,
+            glow: true
+        };
+
+        let width, height;
+        let drawQueue = [];
+        let animationId;
+        let colorLUT = [];
+
+        // --- HELPERS ---
+        function hexToRgb(hex) {
+            // Expand shorthand form (e.g. "03F") to full form (e.g. "0033FF")
+            const shorthandRegex = /^#?([a-f\d])([a-f\d])([a-f\d])$/i;
+            hex = hex.replace(shorthandRegex, (m, r, g, b) => r + r + g + g + b + b);
+            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? {
+                r: parseInt(result[1], 16),
+                g: parseInt(result[2], 16),
+                b: parseInt(result[3], 16)
+            } : { r: 255, g: 255, b: 255 };
+        }
+
+        // --- L-SYSTEM LOGIC ---
+        function generateString() {
+            const sys = PRESETS[params.preset];
+            let current = sys.axiom;
+            
+            let maxIter = 6;
+            if (params.preset.includes('Dragon')) maxIter = 14;
+            if (params.preset.includes('Gosper')) maxIter = 5;
+            if (params.preset.includes('Arrow')) maxIter = 8;
+            const safeIter = Math.min(params.iterations, maxIter);
+
+            for (let i = 0; i < safeIter; i++) {
+                let next = "";
+                for (let char of current) {
+                    if (sys.rules[char]) next += sys.rules[char];
+                    else next += char;
+                }
+                current = next;
+            }
+            return current;
+        }
+
+        function runTurtle(str, stepSize) {
+            const sys = PRESETS[params.preset];
+            let x = 0, y = 0;
+            let dir = sys.startAngle * (Math.PI / 180);
+            const turn = sys.angle * (Math.PI / 180);
+            
+            let minX = 0, maxX = 0, minY = 0, maxY = 0;
+            const points = [];
+            points.push({ x, y });
+
+            for (let char of str) {
+                if (sys.drawChars.includes(char)) {
+                    x += Math.cos(dir) * stepSize;
+                    y += Math.sin(dir) * stepSize;
+                    points.push({ x, y });
+                    
+                    if (x < minX) minX = x; if (x > maxX) maxX = x;
+                    if (y < minY) minY = y; if (y > maxY) maxY = y;
+                } else if (char === '+') {
+                    dir -= turn;
+                } else if (char === '-') {
+                    dir += turn;
+                }
+            }
+            return { points, bounds: { minX, maxX, minY, maxY } };
+        }
+
+        // --- MAIN DRAW PIPELINE ---
+        function initSystem() {
+            if(animationId) cancelAnimationFrame(animationId);
+
+            // 1. Generate & Measure
+            const commandString = generateString();
+            const measureRun = runTurtle(commandString, 1);
+            const bounds = measureRun.bounds;
+            
+            // 2. Fit & Scale
+            const margin = 50;
+            const shapeW = bounds.maxX - bounds.minX || 1;
+            const shapeH = bounds.maxY - bounds.minY || 1;
+            const scaleX = (width - margin * 2) / shapeW;
+            const scaleY = (height - margin * 2) / shapeH;
+            const finalStep = Math.min(scaleX, scaleY);
+
+            // 3. Center
+            const finalRun = runTurtle(commandString, finalStep);
+            const cx = (bounds.minX + bounds.maxX) / 2 * finalStep;
+            const cy = (bounds.minY + bounds.maxY) / 2 * finalStep;
+            const offsetX = (width / 2) - cx;
+            const offsetY = (height / 2) - cy;
+
+            drawQueue = finalRun.points.map(p => ({
+                x: p.x + offsetX,
+                y: p.y + offsetY
+            }));
+
+            // 4. Background Fill
+            ctx.fillStyle = params.backgroundColor;
+            ctx.fillRect(0, 0, width, height);
+            
+            // 5. Setup Colors
+            if (params.mode === 'Gradient') {
+                updatePalette(drawQueue.length);
+            }
+            
+            currentIndex = 0;
+            animate();
+        }
+
+        let currentIndex = 0;
+        
+        function updatePalette(totalSteps) {
+            const colors = createColormap({
+                colormap: params.palette,
+                nshades: Math.min(2048, totalSteps),
+                format: 'rgba',
+                alpha: params.opacity
+            });
+            colorLUT = colors;
+        }
+
+        function animate() {
+            if (currentIndex >= drawQueue.length - 1) return;
+
+            ctx.lineWidth = params.lineWidth;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+
+            const speed = Math.floor(params.drawSpeed);
+            const monoRgb = hexToRgb(params.monoColor);
+
+            for (let k = 0; k < speed; k++) {
+                if (currentIndex >= drawQueue.length - 1) break;
+
+                const p1 = drawQueue[currentIndex];
+                const p2 = drawQueue[currentIndex + 1];
+                const progress = currentIndex / drawQueue.length;
+
+                // --- COLOR LOGIC ---
+                let colorStr = '';
+                
+                if (params.mode === 'Gradient') {
+                    // Palette Mode
+                    const colorIdx = Math.floor(progress * (colorLUT.length - 1));
+                    const [r,g,b] = colorLUT[colorIdx] || [255,255,255];
+                    colorStr = `rgba(${r},${g},${b}, ${params.opacity})`;
+                } else {
+                    // Monochrome Mode
+                    if (params.varyTint) {
+                        // Fade in logic: map progress to opacity (0.1 to 1.0)
+                        const alpha = 0.1 + (progress * 0.9);
+                        colorStr = `rgba(${monoRgb.r},${monoRgb.g},${monoRgb.b}, ${alpha * params.opacity})`;
+                    } else {
+                        // Solid
+                        colorStr = `rgba(${monoRgb.r},${monoRgb.g},${monoRgb.b}, ${params.opacity})`;
+                    }
+                }
+
+                ctx.strokeStyle = colorStr;
+                
+                if (params.glow) {
+                    ctx.shadowBlur = 8;
+                    ctx.shadowColor = colorStr;
+                } else {
+                    ctx.shadowBlur = 0;
+                }
+
+                ctx.beginPath();
+                ctx.moveTo(p1.x, p1.y);
+                ctx.lineTo(p2.x, p2.y);
+                ctx.stroke();
+
+                currentIndex++;
+            }
+            animationId = requestAnimationFrame(animate);
+        }
+
+        function downloadPrint() {
+            const pCanvas = document.createElement('canvas');
+            const pWidth = 2000; pHeight = 2000;
+            pCanvas.width = pWidth; pCanvas.height = pHeight;
+            const pCtx = pCanvas.getContext('2d');
+
+            // 1. Use User's Background (Or default white for pure print?)
+            // Let's use user's background choice for consistency
+            pCtx.fillStyle = params.backgroundColor;
+            pCtx.fillRect(0, 0, pWidth, pHeight);
+
+            // 2. Logic to choose contrast color
+            // Simple heuristic: if background is dark, draw white lines. Else black.
+            const bgRgb = hexToRgb(params.backgroundColor);
+            const brightness = (bgRgb.r * 299 + bgRgb.g * 587 + bgRgb.b * 114) / 1000;
+            const inkColor = brightness > 128 ? '#000000' : '#ffffff';
+
+            const commandString = generateString();
+            const measureRun = runTurtle(commandString, 1);
+            const bounds = measureRun.bounds;
+            const margin = 100;
+            const shapeW = bounds.maxX - bounds.minX || 1;
+            const shapeH = bounds.maxY - bounds.minY || 1;
+            const finalStep = Math.min((pWidth-margin*2)/shapeW, (pHeight-margin*2)/shapeH);
+            const finalRun = runTurtle(commandString, finalStep);
+            
+            const cx = (bounds.minX + bounds.maxX) / 2 * finalStep;
+            const cy = (bounds.minY + bounds.maxY) / 2 * finalStep;
+            const offsetX = (pWidth / 2) - cx;
+            const offsetY = (pHeight / 2) - cy;
+
+            pCtx.lineWidth = params.lineWidth * 1.5;
+            pCtx.lineCap = 'round'; pCtx.lineJoin = 'round';
+            pCtx.strokeStyle = inkColor; 
+            pCtx.shadowBlur = 0;
+
+            pCtx.beginPath();
+            const points = finalRun.points;
+            if(points.length > 0) {
+                pCtx.moveTo(points[0].x + offsetX, points[0].y + offsetY);
+                for(let i=1; i<points.length; i++) {
+                    pCtx.lineTo(points[i].x + offsetX, points[i].y + offsetY);
+                }
+            }
+            pCtx.stroke();
+
+            pCtx.font = '24px monospace';
+            pCtx.fillStyle = inkColor;
+            pCtx.fillText(`ARCHITECTURAL INTELLIGENCE | ${params.preset.toUpperCase()} | GEN ${params.iterations}`, 50, pHeight - 50);
+
+            const link = document.createElement('a');
+            link.download = `${params.preset.replace(' ', '_')}_print.png`;
+            link.href = pCanvas.toDataURL('image/png');
+            link.click();
+        }
+
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+            initSystem();
+        }
+        window.addEventListener('resize', resize);
+
+        // --- UI ---
+        const pane = new Tweakpane.Pane({ title: 'L-System Engine' });
+
+        pane.addInput(params, 'preset', {
+            options: { 'Hilbert': 'Hilbert', 'Peano': 'Peano', 'Gosper': 'Gosper (Hex)', 'Dragon': 'Dragon', 'Arrow': 'Arrow (Sierpinski)' }
+        }).on('change', () => {
+             if(params.preset.includes('Dragon')) params.iterations = 10;
+             else if(params.preset.includes('Gosper')) params.iterations = 4;
+             else if(params.preset.includes('Arrow')) params.iterations = 7;
+             else params.iterations = 5;
+             pane.refresh();
+             initSystem(); 
+        });
+
+        const fGen = pane.addFolder({ title: 'Generator' });
+        fGen.addInput(params, 'iterations', { min: 1, max: 14, step: 1, label: 'Recursion' }).on('change', initSystem);
+        fGen.addInput(params, 'drawSpeed', { min: 1, max: 500, label: 'Plot Speed' });
+
+        const fColor = pane.addFolder({ title: 'Colors' });
+        fColor.addInput(params, 'backgroundColor', { label: 'Background' }).on('change', initSystem);
+        fColor.addInput(params, 'mode', { options: { Gradient: 'Gradient', Monochrome: 'Monochrome' } }).on('change', () => { 
+            pane.refresh(); initSystem(); 
+        });
+        
+        // Palette Mode Controls
+        const fGrad = fColor.addFolder({ title: 'Gradient Settings', expanded: true });
+        fGrad.addInput(params, 'palette', { options: { Magma: 'magma', Inferno: 'inferno', Viridis: 'viridis', Jet: 'jet', Greys: 'greys' } }).on('change', initSystem);
+        
+        // Monochrome Mode Controls
+        const fMono = fColor.addFolder({ title: 'Monochrome Settings', expanded: true });
+        fMono.addInput(params, 'monoColor', { label: 'Ink Color' }).on('change', initSystem);
+        fMono.addInput(params, 'varyTint', { label: 'Vary Tint' }).on('change', initSystem);
+        
+        // Conditional Visibility (Simulated by just showing all, or organizing nicely)
+        // Tweakpane doesn't support dynamic hiding easily without plugins, so we leave folders open.
+
+        const fStyle = pane.addFolder({ title: 'Style' });
+        fStyle.addInput(params, 'lineWidth', { min: 0.5, max: 10, label: 'Pen Width' });
+        fStyle.addInput(params, 'glow', { label: 'Neon Glow' });
+
+        fStyle.addSeparator();
+        fStyle.addButton({ title: 'Re-Plot' }).on('click', initSystem);
+        fStyle.addButton({ title: 'Download Print (.PNG)' }).on('click', downloadPrint);
+
+        resize();
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Architectural Intelligence | The Structure</title>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.1.0/dist/tweakpane.min.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #111; }
+        canvas { display: block; }
+        #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #888; font-family: monospace; }
+    </style>
+</head>
+<body>
+    <div id="loading">Initialising Lattice...</div>
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // --- SCENE SETUP ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x111111);
+        scene.fog = new THREE.Fog(0x111111, 20, 60);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(12, 12, 12);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.localClippingEnabled = true;
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.autoRotate = true;
+        controls.autoRotateSpeed = 0.5;
+
+        // --- STUDIO LIGHTING RIG ---
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+        dirLight.position.set(10, 20, 10);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 2048;
+        dirLight.shadow.mapSize.height = 2048;
+        dirLight.shadow.bias = -0.0001;
+        scene.add(dirLight);
+
+        const fillLight = new THREE.DirectionalLight(0xddeeff, 0.5);
+        fillLight.position.set(-10, 5, -10);
+        scene.add(fillLight);
+
+        // --- CLIPPING PLANE ---
+        const sectionPlane = new THREE.Plane(new THREE.Vector3(0, 0, -1), 0);
+        const planeHelper = new THREE.PlaneHelper(sectionPlane, 20, 0xff0000);
+        planeHelper.visible = false;
+        scene.add(planeHelper);
+
+        // --- STATE ---
+        const params = {
+            structure: 'A15 (Weaire-Phelan)', 
+            repeat: 2,
+            atomSize: 0.15,
+            strutSize: 0.04,
+            showAtoms: true,
+            showStruts: true,
+            color: '#00ffff',
+            sectionActive: false,
+            sectionLevel: 0
+        };
+
+        let group; 
+
+        // --- GEOMETRY GENERATORS ---
+        function getA15Points(offset) {
+            const points = [];
+            points.push(new THREE.Vector3(0, 0, 0).add(offset));
+            points.push(new THREE.Vector3(0.5, 0.5, 0.5).add(offset));
+            points.push(new THREE.Vector3(0.25, 0.5, 0).add(offset));
+            points.push(new THREE.Vector3(0.75, 0.5, 0).add(offset));
+            points.push(new THREE.Vector3(0, 0.25, 0.5).add(offset));
+            points.push(new THREE.Vector3(0, 0.75, 0.5).add(offset));
+            points.push(new THREE.Vector3(0.5, 0, 0.25).add(offset));
+            points.push(new THREE.Vector3(0.5, 0, 0.75).add(offset));
+            return points;
+        }
+
+        function getBCCPoints(offset) {
+            const points = [];
+            points.push(new THREE.Vector3(0, 0, 0).add(offset));
+            points.push(new THREE.Vector3(0.5, 0.5, 0.5).add(offset));
+            return points;
+        }
+
+        function getRandomPoints(offset) {
+            const points = [];
+            for(let i=0; i<4; i++) {
+                points.push(new THREE.Vector3(Math.random(), Math.random(), Math.random()).add(offset));
+            }
+            return points;
+        }
+
+        // --- BUILDER ---
+        function buildStructure() {
+            if (group) scene.remove(group);
+            group = new THREE.Group();
+
+            const atoms = [];
+            const r = params.repeat;
+            const spacing = 2.0; 
+
+            for (let x = -r; x <= r; x++) {
+                for (let y = -r; y <= r; y++) {
+                    for (let z = -r; z <= r; z++) {
+                        const offset = new THREE.Vector3(x, y, z);
+                        let cellPoints = [];
+                        
+                        if (params.structure === 'A15 (Weaire-Phelan)') {
+                            cellPoints = getA15Points(offset);
+                        } else if (params.structure === 'BCC (Kelvin)') {
+                            cellPoints = getBCCPoints(offset);
+                        } else {
+                            cellPoints = getRandomPoints(offset);
+                        }
+
+                        cellPoints.forEach(p => p.multiplyScalar(spacing));
+                        atoms.push(...cellPoints);
+                    }
+                }
+            }
+
+            const clippingPlanes = params.sectionActive ? [sectionPlane] : [];
+
+            // Atoms
+            const atomGeo = new THREE.SphereGeometry(params.atomSize, 32, 32); 
+            const atomMat = new THREE.MeshPhysicalMaterial({
+                color: params.color,
+                metalness: 0.6,
+                roughness: 0.2,
+                clearcoat: 1.0,
+                clearcoatRoughness: 0.1,
+                emissive: params.color,
+                emissiveIntensity: 0.2,
+                clippingPlanes: clippingPlanes,
+                clipShadows: true
+            });
+
+            if (params.showAtoms) {
+                const atomMesh = new THREE.InstancedMesh(atomGeo, atomMat, atoms.length);
+                atomMesh.castShadow = true;
+                atomMesh.receiveShadow = true;
+                
+                const dummy = new THREE.Object3D();
+                atoms.forEach((p, i) => {
+                    dummy.position.copy(p);
+                    dummy.updateMatrix();
+                    atomMesh.setMatrixAt(i, dummy.matrix);
+                });
+                atomMesh.instanceMatrix.needsUpdate = true;
+                group.add(atomMesh);
+            }
+
+            // Struts with Dynamic Threshold
+            if (params.showStruts) {
+                const strutGeo = new THREE.CylinderGeometry(params.strutSize, params.strutSize, 1, 8);
+                strutGeo.translate(0, 0.5, 0); 
+                strutGeo.rotateX(Math.PI / 2); 
+                
+                const strutMat = new THREE.MeshStandardMaterial({
+                    color: 0x888888, 
+                    roughness: 0.5,
+                    metalness: 0.5,
+                    clippingPlanes: clippingPlanes,
+                    clipShadows: true
+                });
+                
+                const strutMatrices = [];
+                
+                // DYNAMIC THRESHOLD LOGIC
+                // Weaire-Phelan (A15) neighbors are close (~0.55).
+                // Kelvin (BCC) neighbors are far (~0.87).
+                // scaling factor is 2.0.
+                let thresholdFactor = 0.65; // Works for A15
+                if (params.structure === 'BCC (Kelvin)') {
+                    thresholdFactor = 0.9; // 0.9 * 2.0 = 1.8 (covers the 1.73 distance)
+                }
+
+                const distThreshold = spacing * thresholdFactor;
+                
+                for (let i = 0; i < atoms.length; i++) {
+                    const p1 = atoms[i];
+                    // Search optimization
+                    for (let j = i + 1; j < atoms.length; j++) {
+                        const p2 = atoms[j];
+                        const d = p1.distanceTo(p2);
+                        
+                        if (d < distThreshold) {
+                            const direction = new THREE.Vector3().subVectors(p2, p1);
+                            const orientation = new THREE.Matrix4();
+                            orientation.lookAt(p1, p2, new THREE.Object3D().up);
+                            const scale = new THREE.Matrix4().makeScale(1, 1, d);
+                            const position = new THREE.Matrix4().makeTranslation(p1.x, p1.y, p1.z);
+                            const matrix = new THREE.Matrix4();
+                            matrix.multiply(position).multiply(orientation).multiply(scale);
+                            strutMatrices.push(matrix);
+                        }
+                    }
+                }
+
+                if (strutMatrices.length > 0) {
+                     const strutMesh = new THREE.InstancedMesh(strutGeo, strutMat, strutMatrices.length);
+                     strutMesh.castShadow = true;
+                     strutMesh.receiveShadow = true;
+                     for(let k=0; k<strutMatrices.length; k++){
+                         strutMesh.setMatrixAt(k, strutMatrices[k]);
+                     }
+                     strutMesh.instanceMatrix.needsUpdate = true;
+                     group.add(strutMesh);
+                }
+            }
+            
+            const box = new THREE.Box3().setFromObject(group);
+            const center = box.getCenter(new THREE.Vector3());
+            group.position.sub(center);
+
+            scene.add(group);
+            document.getElementById('loading').style.display = 'none';
+        }
+
+        function updateSection() {
+            sectionPlane.constant = params.sectionLevel;
+            planeHelper.visible = params.sectionActive;
+            buildStructure();
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // --- UI ---
+        const pane = new Tweakpane.Pane({ title: 'Crystal DNA' });
+        
+        pane.addInput(params, 'structure', {
+            options: {
+                'Weaire-Phelan (A15)': 'A15 (Weaire-Phelan)',
+                'Kelvin (BCC)': 'BCC (Kelvin)',
+                'Random (Gas)': 'Random'
+            }
+        }).on('change', buildStructure);
+
+        const fVis = pane.addFolder({ title: 'Visualization' });
+        fVis.addInput(params, 'repeat', { min: 1, max: 3, step: 1, label: 'Grid Size' }).on('change', buildStructure);
+        fVis.addInput(params, 'atomSize', { min: 0.01, max: 0.5, label: 'Node Size' }).on('change', buildStructure);
+        fVis.addInput(params, 'strutSize', { min: 0.01, max: 0.2, label: 'Beam Size' }).on('change', buildStructure);
+        fVis.addInput(params, 'color', { label: 'Node Color' }).on('change', buildStructure);
+        
+        const fSect = pane.addFolder({ title: 'Section Plane (Water Cube)' });
+        fSect.addInput(params, 'sectionActive', { label: 'Enable Slice' }).on('change', updateSection);
+        fSect.addInput(params, 'sectionLevel', { min: -5, max: 5, step: 0.1, label: 'Slice Level' }).on('change', () => {
+             sectionPlane.constant = params.sectionLevel;
+        });
+
+        // Init
+        buildStructure();
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+    </script>
+</body>
+</html>

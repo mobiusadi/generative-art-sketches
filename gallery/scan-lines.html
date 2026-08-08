@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Architectural Intelligence | Scanlines</title>
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.1.0/dist/tweakpane.min.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
+        canvas { display: block; width: 100%; height: 100%; }
+        
+        .home-btn {
+            position: fixed; top: 20px; left: 20px;
+            color: #fff; text-decoration: none; font-family: monospace;
+            font-size: 14px; z-index: 1000; opacity: 0.5; transition: 0.3s;
+            mix-blend-mode: difference; border: 1px solid rgba(255,255,255,0.3);
+            padding: 5px 10px; background: rgba(0,0,0,0.5);
+        }
+        .home-btn:hover { opacity: 1.0; background: #fff; color: #000; }
+    </style>
+</head>
+<body>
+
+    <a href="index.html" class="home-btn">← Home</a>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        // --- 1. SEEDED RANDOM ENGINE ---
+        // We need this so "Seed: 101" always produces the exact same art.
+        class Random {
+            constructor(seed = 12345) {
+                this.setSeed(seed);
+            }
+            setSeed(seed) {
+                this.m = 0x80000000;
+                this.a = 1103515245;
+                this.c = 12345;
+                this.state = seed ? seed : Math.floor(Math.random() * (this.m - 1));
+            }
+            nextFloat() {
+                this.state = (this.a * this.state + this.c) % this.m;
+                return this.state / (this.m - 1);
+            }
+            range(min, max) {
+                return min + this.nextFloat() * (max - min);
+            }
+            pick(arr) {
+                return arr[Math.floor(this.nextFloat() * arr.length)];
+            }
+            // Simple 3D Noise approximation for the scanlines
+            noise3D(x, y, z) {
+                const p = Math.sin(x * 12.9898 + y * 78.233 + z * 0.5) * 43758.5453;
+                return p - Math.floor(p); 
+            }
+        }
+
+        // --- 2. COLORMAP LIBRARY (Recreated for Browser) ---
+        // Generating high-quality palette arrays manually to avoid huge dependencies.
+        const PALETTES_DATA = {
+            magma: ['#000004', '#140e36', '#3b0f70', '#641a80', '#8c2981', '#b73779', '#de4968', '#f7705c', '#fe9f6d', '#fcfdbf'],
+            inferno: ['#000004', '#160b39', '#420a68', '#6a176e', '#932667', '#bc3754', '#dd513a', '#f37819', '#fca50a', '#fcffa4'],
+            plasma: ['#0d0887', '#46039f', '#7301a8', '#9c179e', '#bd3786', '#d8576b', '#ed7953', '#fb9f3a', '#fdc927', '#f0f921'],
+            viridis: ['#440154', '#482878', '#3e4989', '#31688e', '#26828e', '#1f9e89', '#35b779', '#6dcd59', '#b4de2c', '#fde725'],
+            jet: ['#00008f', '#0000ff', '#007fff', '#00ffff', '#7fffff', '#ffff7f', '#ffff00', '#ff7f00', '#ff0000', '#7f0000'],
+            cool: ['#00ffff', '#20eaff', '#40d5ff', '#60bfff', '#80aaff', '#a095ff', '#c080ff', '#e06aff', '#ff55ff', '#ff40ff'],
+            warm: ['#984ea3', '#a846a0', '#b93e9d', '#ca369a', '#db2e97', '#ec2694', '#fd1e91', '#fe347a', '#ff4a63', '#ff604c'],
+            bone: ['#000000', '#18181b', '#2f2f35', '#464650', '#5d5d6a', '#747485', '#8b8ba0', '#a2a2ba', '#b9b9d5', '#d0d0f0', '#e7e7ff', '#ffffff']
+        };
+
+        function generatePalette(name, steps=50) {
+            const keys = PALETTES_DATA[name] || PALETTES_DATA['magma'];
+            // Create a canvas to interpolate colors (browser native gradient engine)
+            const offCanvas = document.createElement('canvas');
+            offCanvas.width = steps;
+            offCanvas.height = 1;
+            const offCtx = offCanvas.getContext('2d');
+            const grad = offCtx.createLinearGradient(0, 0, steps, 0);
+            
+            keys.forEach((c, i) => {
+                grad.addColorStop(i / (keys.length - 1), c);
+            });
+            offCtx.fillStyle = grad;
+            offCtx.fillRect(0, 0, steps, 1);
+            
+            // Extract hex codes
+            const data = offCtx.getImageData(0, 0, steps, 1).data;
+            const colors = [];
+            for(let i=0; i<data.length; i+=4) {
+                colors.push(`rgb(${data[i]}, ${data[i+1]}, ${data[i+2]})`);
+            }
+            return colors;
+        }
+
+        // --- 3. MAIN SETUP ---
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d', { alpha: false }); // Optimize for speed
+        const rng = new Random();
+
+        let width, height;
+        let rowData = [];
+        let paletteCache = {};
+
+        const params = {
+            rows: 4,
+            speed: 1.0,
+            noiseScale: 2.0,
+            noiseSpeed: 0.5,
+            gap: 2,
+            seed: 101,
+            needsReset: true
+        };
+
+        // Resize Handler
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+            // Re-render immediately on resize might flicker, but keeps it sharp
+            // params.needsReset = true; 
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // Initialize Row Data based on Seed
+        function initRows() {
+            rng.setSeed(params.seed);
+            rowData = [];
+            
+            const availablePalettes = Object.keys(PALETTES_DATA);
+            
+            for (let i = 0; i < 200; i++) {
+                rowData.push({
+                    paletteName: rng.pick(availablePalettes),
+                    offset: rng.range(0, 1000),
+                    direction: rng.range(0, 1) > 0.5 ? 1 : -1,
+                    speedMod: rng.range(0.5, 1.5)
+                });
+            }
+            console.log('Art generated with seed:', params.seed);
+        }
+
+        // Pre-calculate palettes to save CPU
+        function preloadPalettes() {
+            Object.keys(PALETTES_DATA).forEach(name => {
+                paletteCache[name] = generatePalette(name, 50);
+            });
+        }
+        preloadPalettes();
+
+        // --- 4. ANIMATION LOOP ---
+        let time = 0;
+        
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (params.needsReset) {
+                initRows();
+                params.needsReset = false;
+            }
+
+            // Update Time
+            time += params.speed * 0.01;
+
+            // Clear Background
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, width, height);
+
+            const totalGap = params.gap * (params.rows - 1);
+            const rowHeight = (height - totalGap) / params.rows;
+
+            for (let r = 0; r < params.rows; r++) {
+                const data = rowData[r % rowData.length];
+                const y = r * (rowHeight + params.gap);
+                const colors = paletteCache[data.paletteName];
+
+                const chunk = 4; // Pixel chunk size (2-4 is good performance/look balance)
+                
+                // Draw row
+                for (let x = 0; x < width; x += chunk) {
+                    const u = x / width;
+                    
+                    // Noise Calculation
+                    // We combine horizontal position (u), row index (r), and time
+                    const n = rng.noise3D(
+                        u * params.noiseScale + data.offset,
+                        r * 10.5,
+                        time * params.noiseSpeed * data.speedMod
+                    );
+                    
+                    // Map noise (-1 to 1) to color index (0 to 49)
+                    // Simple normalization: (n + 1) / 2
+                    let norm = (Math.sin(n * Math.PI * 2) + 1) / 2; 
+                    let colorIdx = Math.floor(norm * (colors.length - 1));
+                    
+                    ctx.fillStyle = colors[colorIdx];
+                    ctx.fillRect(x, y, chunk + 1, rowHeight); // +1 to prevent tiny gaps
+                }
+            }
+        }
+
+        // --- 5. TWEAKPANE UI ---
+        const pane = new Tweakpane.Pane({ title: 'Scanline Controls' });
+
+        const f1 = pane.addFolder({ title: 'Session' });
+        
+        f1.addButton({ title: 'Randomize New Art' }).on('click', () => {
+            params.seed = Math.floor(Math.random() * 10000);
+            params.needsReset = true;
+            pane.refresh();
+        });
+
+        f1.addInput(params, 'seed', { min: 0, max: 10000, step: 1 })
+          .on('change', () => { params.needsReset = true; });
+
+        f1.addButton({ title: 'Save Image' }).on('click', () => {
+            const link = document.createElement('a');
+            link.download = `scanlines-${params.seed}.png`;
+            link.href = canvas.toDataURL();
+            link.click();
+        });
+
+        const f2 = pane.addFolder({ title: 'Structure' });
+        f2.addInput(params, 'rows', { min: 1, max: 50, step: 1 });
+        f2.addInput(params, 'gap', { min: 0, max: 50 });
+
+        const f3 = pane.addFolder({ title: 'Movement' });
+        f3.addInput(params, 'speed', { min: 0, max: 10 });
+        f3.addInput(params, 'noiseScale', { min: 0.1, max: 10.0, label: 'Zoom' });
+        f3.addInput(params, 'noiseSpeed', { min: 0.1, max: 5.0, label: 'Flow' });
+
+        // Start
+        initRows();
+        animate();
+
+    </script>
+</body>
+</html>

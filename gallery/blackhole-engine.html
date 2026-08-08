@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Architectural Intelligence | Singularity Engine</title>
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.1.0/dist/tweakpane.min.js"></script>
+    <style>
+        body { margin: 0; background: #000; overflow: hidden; font-family: monospace; }
+        #hud { position: absolute; top: 20px; left: 20px; color: #888; pointer-events: none; width:300px; }
+        .val { color: #fff; font-weight: bold; }
+        .crit { color: #ff0000; font-weight: bold; animation: pulse 1s infinite; }
+        @keyframes pulse { 0% {opacity:1;} 50% {opacity:0.5;} 100% {opacity:1;} }
+    </style>
+</head>
+<body>
+    <div id="hud">
+        <div style="font-size:10px; letter-spacing:2px; margin-bottom:5px;">SINGULARITY ENGINE</div>
+        <div>Ratio (M²/J²): <span id="val-ratio" class="val">--</span></div>
+        <div id="status" style="margin-top:10px; font-size:12px;">STABLE</div>
+    </div>
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(40, window.innerWidth/window.innerHeight, 0.1, 100);
+        camera.position.set(8, 4, 8);
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+        
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.autoRotate = true;
+        controls.autoRotateSpeed = 2.0;
+
+        // Black Hole Geometry
+        // 1. Event Horizon (Sphere)
+        const horizonGeo = new THREE.SphereGeometry(1, 32, 32);
+        const horizonMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+        const horizon = new THREE.Mesh(horizonGeo, horizonMat);
+        scene.add(horizon);
+
+        // 2. Accretion Disk (Torus/Ring)
+        const diskGeo = new THREE.RingGeometry(1.5, 4, 64);
+        const diskMat = new THREE.MeshBasicMaterial({ 
+            color: 0x4444ff, 
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.8,
+        });
+        // Create a custom shader or texture for swirl later, simple for now
+        // Let's use vertices to make it look particle-like
+        const disk = new THREE.Mesh(diskGeo, diskMat);
+        disk.rotation.x = -Math.PI/2;
+        scene.add(disk);
+
+        // 3. Photon Ring (Thin glowing ring)
+        const ringGeo = new THREE.TorusGeometry(1.2, 0.02, 16, 100);
+        const ringMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+        const photonRing = new THREE.Mesh(ringGeo, ringMat);
+        photonRing.rotation.x = Math.PI/2;
+        scene.add(photonRing);
+
+        // Physics State
+        const params = {
+            M: 10,  // Mass
+            J: 6    // Angular Momentum
+        };
+
+        const PHI = (1 + Math.sqrt(5)) / 2; // 1.618
+
+        function updatePhysics() {
+            // Calculate Ratio R = M^2 / J^2
+            // Avoid division by zero
+            const J = Math.max(0.1, params.J);
+            const ratio = (params.M * params.M) / (J * J);
+            
+            document.getElementById('val-ratio').innerText = ratio.toFixed(3);
+            
+            const status = document.getElementById('status');
+            const diff = Math.abs(ratio - PHI);
+
+            if (diff < 0.1) {
+                // PHASE TRANSITION
+                status.innerText = "⚠️ CRITICAL PHASE TRANSITION (φ) ⚠️";
+                status.className = "crit";
+                disk.material.color.setHex(0xffcc00); // GOLD
+                photonRing.material.color.setHex(0xff0000); // RED Warning
+            } else {
+                status.innerText = "STABLE METRIC";
+                status.className = "";
+                disk.material.color.setHex(0x2244ff); // Blue
+                photonRing.material.color.setHex(0xffffff); // White
+            }
+
+            // Visual Scaling based on Spin (J)
+            // Higher spin flattens the horizon (visual metaphor)
+            const scaleY = 1 - (params.J / 20); 
+            horizon.scale.set(1, scaleY, 1);
+        }
+
+        // Tweakpane
+        const pane = new Tweakpane.Pane({title: 'Metric Controls'});
+        pane.addInput(params, 'M', {min: 1, max: 20, label: 'Mass (M)'}).on('change', updatePhysics);
+        pane.addInput(params, 'J', {min: 1, max: 20, label: 'Spin (J)'}).on('change', updatePhysics);
+        pane.addButton({title: 'Set to Golden State'}).on('click', () => {
+            // Set M and J such that M^2/J^2 = 1.618
+            // Let M = 10. Then J^2 = 100 / 1.618 = 61.8. J = 7.86
+            params.M = 10;
+            params.J = 7.86;
+            pane.refresh();
+            updatePhysics();
+        });
+
+        function animate() {
+            requestAnimationFrame(animate);
+            // Spin the disk
+            disk.rotation.z += 0.02 * (params.J / 5); 
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth/window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+        
+        updatePhysics();
+        animate();
+    </script>
+</body>
+</html>

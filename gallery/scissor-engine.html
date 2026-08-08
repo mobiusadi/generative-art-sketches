@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Architectural Intelligence | Scissor Engine</title>
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.1.0/dist/tweakpane.min.js"></script>
+    <style>
+        body { margin: 0; background: #111; overflow: hidden; font-family: monospace; }
+        canvas { display: block; }
+        #hud { position: absolute; top: 20px; left: 20px; color: #888; pointer-events: none; background: rgba(0,0,0,0.8); padding: 15px; border-left: 2px solid #00ffff; }
+        .val { color: #fff; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div id="hud">
+        <div style="font-size:10px; letter-spacing:2px; margin-bottom:5px;">KINETIC ENGINE</div>
+        <div>DEPLOYMENT: <span id="val-dep" class="val">--%</span></div>
+        <div>WIDTH: <span id="val-w" class="val">--</span></div>
+        <div>HEIGHT: <span id="val-h" class="val">--</span></div>
+    </div>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        const params = {
+            rows: 6,
+            cols: 12,
+            strutLength: 60,
+            angle: 45, // Degrees from horizontal
+            autoPlay: true,
+            speed: 0.5
+        };
+
+        let time = 0;
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+
+        function draw() {
+            ctx.fillStyle = '#111';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Calculate Dimensions based on Angle
+            // Scissor unit: A rhombus. 
+            // Width = 2 * (L/2 * cos(theta)) = L * cos(theta)
+            // Height = 2 * (L/2 * sin(theta)) = L * sin(theta)
+            
+            const rad = params.angle * Math.PI / 180;
+            const unitW = params.strutLength * Math.cos(rad);
+            const unitH = params.strutLength * Math.sin(rad);
+
+            // Update HUD
+            const deployPct = (params.angle / 90) * 100;
+            document.getElementById('val-dep').innerText = deployPct.toFixed(0) + "%";
+            document.getElementById('val-w').innerText = (unitW * params.cols).toFixed(0) + "px";
+            document.getElementById('val-h').innerText = (unitH * params.rows).toFixed(0) + "px";
+
+            // Center Grid
+            const totalW = unitW * params.cols;
+            const totalH = unitH * params.rows;
+            const startX = (canvas.width - totalW) / 2;
+            const startY = (canvas.height - totalH) / 2;
+
+            ctx.lineWidth = 3;
+            
+            for(let r = 0; r <= params.rows; r++) {
+                for(let c = 0; c <= params.cols; c++) {
+                    const cx = startX + c * unitW;
+                    const cy = startY + r * unitH;
+
+                    // Draw Struts (X shapes)
+                    // Only draw if within bounds (fencepost)
+                    if (c < params.cols && r < params.rows) {
+                        ctx.strokeStyle = '#333';
+                        // Determine offset for visual depth
+                        
+                        const x1 = cx; const y1 = cy;
+                        const x2 = cx + unitW; const y2 = cy + unitH;
+                        const x3 = cx; const y3 = cy + unitH;
+                        const x4 = cx + unitW; const y4 = cy;
+
+                        // Strut A (Cyan)
+                        ctx.beginPath();
+                        ctx.strokeStyle = '#00ffff';
+                        ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+                        ctx.stroke();
+
+                        // Strut B (Pink)
+                        ctx.beginPath();
+                        ctx.strokeStyle = '#ff0055';
+                        ctx.moveTo(x3, y3); ctx.lineTo(x4, y4);
+                        ctx.stroke();
+                        
+                        // Pivot Point (Center)
+                        ctx.fillStyle = '#fff';
+                        ctx.beginPath();
+                        ctx.arc(cx + unitW/2, cy + unitH/2, 3, 0, Math.PI*2);
+                        ctx.fill();
+                    }
+
+                    // Nodes
+                    ctx.fillStyle = '#444';
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, 4, 0, Math.PI*2);
+                    ctx.fill();
+                }
+            }
+        }
+
+        // Animation Loop
+        function animate() {
+            if (params.autoPlay) {
+                time += 0.02 * params.speed;
+                // Oscillate angle between 10 and 80 degrees
+                const osc = Math.sin(time);
+                params.angle = 45 + (osc * 35);
+                pane.refresh();
+            }
+            draw();
+            requestAnimationFrame(animate);
+        }
+
+        // UI
+        const pane = new Tweakpane.Pane({ title: 'Deployable Grid' });
+        pane.addInput(params, 'angle', { min: 10, max: 80, label: 'Deployment' });
+        pane.addInput(params, 'strutLength', { min: 20, max: 100 });
+        pane.addInput(params, 'cols', { min: 2, max: 20, step: 1 });
+        pane.addInput(params, 'rows', { min: 2, max: 20, step: 1 });
+        pane.addInput(params, 'autoPlay');
+        pane.addInput(params, 'speed', { min: 0.1, max: 2 });
+
+        resize();
+        animate();
+    </script>
+</body>
+</html>

@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Architectural Intelligence | Asymptotic Engine v9</title>
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.1.0/dist/tweakpane.min.js"></script>
+    <style>
+        body { margin: 0; background: #080808; font-family: monospace; overflow: hidden; }
+        #hud { position: absolute; top: 20px; left: 20px; color: #888; pointer-events: none; background: rgba(0,0,0,0.9); padding: 15px; border-left: 2px solid #ffcc00; width: 300px; z-index: 100; }
+        .val { color: #fff; font-weight: bold; }
+        .mode { color: #ffcc00; font-weight: bold; }
+        .metric-big { font-size: 18px; color: #00ff41; margin-top: 5px; display: block; }
+    </style>
+</head>
+<body>
+    <div id="hud">
+        <div style="font-size:10px; letter-spacing:2px; margin-bottom:5px;">ASYMPTOTIC ENGINE V9</div>
+        <div>STATE: <span id="val-state" class="mode">DEPLOYING</span></div>
+        <div style="margin-top:10px; border-top:1px solid #333; padding-top:5px;">
+            CURRENT HEIGHT: <span id="val-height" class="metric-big">0.00m</span>
+        </div>
+        <div style="margin-top:10px; font-size:11px; color:#666;">
+            *Simulating kinematic elastic deployment.<br>
+            *Asymptotic strips are flat in 2D (0%).
+        </div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 500);
+        camera.position.set(60, 50, 60);
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+        
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.3));
+        const p1 = new THREE.DirectionalLight(0x00ffff, 1); p1.position.set(20, 40, 20); scene.add(p1);
+        const p2 = new THREE.PointLight(0xff0055, 1); p2.position.set(-20, 20, -20); scene.add(p2);
+
+        const mainGroup = new THREE.Group();
+        scene.add(mainGroup);
+
+        const params = {
+            width: 20, length: 20, height: 10,
+            trim: 0.4, density: 12,
+            deployProgress: 1.0, // 0.0 (Flat) to 1.0 (Full Height)
+            cols: 2, rows: 2,
+            spacing: 20,
+            showShell: true
+        };
+
+        function getHypar(u, v, target) {
+            const x = (u - 0.5) * params.width;
+            const z = (v - 0.5) * params.length;
+            // The magic: Height is scaled by deployProgress
+            const y = ((u - 0.5) * 2) * ((v - 0.5) * 2) * (params.height * params.deployProgress);
+            target.set(x, y, z);
+        }
+
+        function isInside(p) {
+            const w = params.width / 2;
+            const l = params.length / 2;
+            if (Math.abs(p.x) > w || Math.abs(p.z) > l) return false;
+            const nx = Math.abs(p.x) / w;
+            const nz = Math.abs(p.z) / l;
+            return (nx + nz < 2.0 - params.trim);
+        }
+
+        function generate() {
+            mainGroup.clear();
+            const offsetI = (params.cols - 1) * params.spacing / 2;
+            const offsetJ = (params.rows - 1) * params.spacing / 2;
+
+            for(let c=0; c<params.cols; c++) {
+                for(let r=0; r<params.rows; r++) {
+                    const moduleGrp = new THREE.Group();
+                    moduleGrp.position.set(c * params.spacing - offsetI, 0, r * params.spacing - offsetJ);
+                    
+                    // Shell
+                    if(params.showShell) {
+                        const geo = new THREE.PlaneGeometry(params.width, params.length, 30, 30);
+                        const pos = geo.attributes.position;
+                        const indices = [];
+                        for(let i=0; i<pos.count; i++) {
+                            const u = (pos.getX(i) / params.width) + 0.5;
+                            const v = (pos.getZ(i) / params.length) + 0.5;
+                            const p = new THREE.Vector3();
+                            getHypar(u, v, p);
+                            pos.setXYZ(i, p.x, p.y, p.z);
+                        }
+                        // Manual Clipping for high-end look
+                        const res = 30;
+                        for(let i=0; i<res; i++) {
+                            for(let j=0; j<res; j++) {
+                                const pCheck = new THREE.Vector3();
+                                getHypar((i+0.5)/res, (j+0.5)/res, pCheck);
+                                if(isInside(pCheck)) {
+                                    const a = i*(res+1)+j; const b = i*(res+1)+j+1;
+                                    const d = (i+1)*(res+1)+j; const c = (i+1)*(res+1)+j+1;
+                                    indices.push(a, b, d, b, c, d);
+                                }
+                            }
+                        }
+                        geo.setIndex(indices);
+                        geo.computeVertexNormals();
+                        const mat = new THREE.MeshPhysicalMaterial({ color: 0x222222, side: THREE.DoubleSide, transparent: true, opacity: 0.6, roughness: 0.1, metalness: 0.2, clearcoat: 1 });
+                        moduleGrp.add(new THREE.Mesh(geo, mat));
+                    }
+
+                    // Asymptotic Beams
+                    const step = 1 / params.density;
+                    for(let i=0; i<=params.density; i++) {
+                        const ptsU = [], ptsV = [];
+                        for(let j=0; j<=40; j++) {
+                            const pU = new THREE.Vector3(), pV = new THREE.Vector3();
+                            getHypar(i*step, j/40, pU);
+                            getHypar(j/40, i*step, pV);
+                            if(isInside(pU)) ptsU.push(pU);
+                            if(isInside(pV)) ptsV.push(pV);
+                        }
+                        if(ptsU.length > 1) moduleGrp.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(ptsU), new THREE.LineBasicMaterial({color: 0x00ffff})));
+                        if(ptsV.length > 1) moduleGrp.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(ptsV), new THREE.LineBasicMaterial({color: 0xff0055})));
+                    }
+                    mainGroup.add(moduleGrp);
+                }
+            }
+            document.getElementById('val-height').innerText = (params.height * params.deployProgress).toFixed(2) + "m";
+        }
+
+        const pane = new Tweakpane.Pane({ title: 'Schling Kinematics' });
+        pane.addInput(params, 'deployProgress', { min: 0, max: 1, label: 'DEPLOYMENT %' }).on('change', generate);
+        pane.addSeparator();
+        pane.addInput(params, 'height', { min: 2, max: 20 }).on('change', generate);
+        pane.addInput(params, 'trim', { min: 0, max: 0.8 }).on('change', generate);
+        pane.addInput(params, 'cols', { min: 1, max: 4, step: 1 }).on('change', generate);
+        pane.addInput(params, 'rows', { min: 1, max: 4, step: 1 }).on('change', generate);
+
+        generate();
+        function animate() { requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera); }
+        animate();
+    </script>
+</body>
+</html>

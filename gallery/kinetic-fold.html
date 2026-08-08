@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Architectural Intelligence | The Kinetic</title>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.1.0/dist/tweakpane.min.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #111; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // --- SCENE SETUP ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x111111);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 15, 15);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap; 
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        // --- LIGHTING ---
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
+        dirLight.position.set(10, 20, 10);
+        dirLight.castShadow = true;
+        scene.add(dirLight);
+
+        const fillLight = new THREE.DirectionalLight(0xddeeff, 0.5);
+        fillLight.position.set(-10, 10, -10);
+        scene.add(fillLight);
+
+        // --- STATE ---
+        const params = {
+            expansion: 0.5,
+            gamma: 84,          // Shear Angle
+            rows: 4,
+            cols: 3,
+            cellSize: 2,
+            paperColor: '#f2f1f0',
+            showLines: true,
+            showDiagonals: false, // New Toggle
+            opacity: 1.0
+        };
+
+        let mesh, lineSegments;
+        let geometry;
+
+        // --- MATH ---
+        function getVertices(expansion) {
+            const a = params.cellSize;
+            const b = params.cellSize;
+            const gammaRad = params.gamma * (Math.PI / 180);
+            const shearFactor = Math.cos(gammaRad); 
+            const t = Math.min(expansion, 1.0);
+            const height = Math.sqrt(Math.max(0, 1 - t*t)) * a;
+
+            const vertices = [];
+            const totalW = params.cols * a * t;
+            const totalH = params.rows * b; 
+            const xOffset = -totalW / 2;
+            const zOffset = -totalH / 2;
+
+            for (let i = 0; i <= params.rows; i++) {
+                for (let j = 0; j <= params.cols; j++) {
+                    let x = j * a * t;
+                    let z = i * b;
+
+                    // Miura Shear
+                    if (j % 2 !== 0) z += (b * shearFactor);
+
+                    // Mountain/Valley Height
+                    const isMountain = (i + j) % 2 === 0;
+                    let y = isMountain ? height : -height;
+                    if (t >= 0.99) y = 0;
+
+                    // Center
+                    x += xOffset;
+                    z += zOffset;
+
+                    vertices.push({ x, y, z });
+                }
+            }
+            return vertices;
+        }
+
+        function updateGeometry() {
+            if (!mesh || !geometry) return;
+            const posAttribute = geometry.attributes.position;
+            const verts = getVertices(params.expansion);
+
+            for (let i = 0; i < verts.length; i++) {
+                posAttribute.setXYZ(i, verts[i].x, verts[i].y, verts[i].z);
+            }
+
+            posAttribute.needsUpdate = true;
+            geometry.computeVertexNormals();
+            
+            if (lineSegments) {
+                scene.remove(lineSegments);
+                createScoreLines();
+            }
+        }
+
+        function createScoreLines() {
+            if (!params.showLines) return;
+            const wiregeo = new THREE.WireframeGeometry(geometry);
+            const mat = new THREE.LineBasicMaterial({ color: '#222', opacity: 0.3, transparent: true });
+            lineSegments = new THREE.LineSegments(wiregeo, mat);
+            lineSegments.position.y = 0.01; 
+            scene.add(lineSegments);
+        }
+
+        function initMesh() {
+            if (mesh) { scene.remove(mesh); geometry.dispose(); }
+            if (lineSegments) scene.remove(lineSegments);
+
+            geometry = new THREE.PlaneGeometry(10, 10, params.cols, params.rows);
+            const material = new THREE.MeshStandardMaterial({
+                color: params.paperColor,
+                side: THREE.DoubleSide,
+                roughness: 0.6,
+                metalness: 0.0,
+                polygonOffset: true, polygonOffsetFactor: 1, 
+                opacity: params.opacity, transparent: true
+            });
+
+            mesh = new THREE.Mesh(geometry, material);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            scene.add(mesh);
+            updateGeometry();
+        }
+
+        // --- BLUEPRINT GENERATOR ---
+        function exportBlueprint() {
+            // 1. Calculate Flat Geometry
+            const flatVerts = getVertices(1.0);
+            
+            // 2. Setup Canvas
+            const cvs = document.createElement('canvas');
+            const scale = 50; 
+            const padding = 100;
+            
+            let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+            flatVerts.forEach(v => {
+                if(v.x < minX) minX = v.x;
+                if(v.x > maxX) maxX = v.x;
+                if(v.z < minZ) minZ = v.z;
+                if(v.z > maxZ) maxZ = v.z;
+            });
+            
+            const w = (maxX - minX) * scale + (padding * 2);
+            const h = (maxZ - minZ) * scale + (padding * 2);
+            cvs.width = w;
+            cvs.height = h;
+            const ctx = cvs.getContext('2d');
+
+            // Background
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0,0,w,h);
+            
+            // Helper to map 3D coords to Canvas
+            const mapX = (x) => (x - minX) * scale + padding;
+            const mapY = (z) => (z - minZ) * scale + padding;
+
+            const widthPoints = params.cols + 1;
+            
+            // Draw Loop
+            for (let i = 0; i <= params.rows; i++) {
+                for (let j = 0; j <= params.cols; j++) {
+                    const idx = i * widthPoints + j;
+                    const v1 = flatVerts[idx];
+
+                    ctx.lineWidth = 1.5;
+
+                    // 1. GRID LINES (Original Structure) -> DOTTED
+                    // Horizontal
+                    if (j < params.cols) {
+                        const v2 = flatVerts[idx + 1];
+                        ctx.beginPath();
+                        ctx.moveTo(mapX(v1.x), mapY(v1.z));
+                        ctx.lineTo(mapX(v2.x), mapY(v2.z));
+                        ctx.setLineDash([2, 4]); // DOTTED
+                        ctx.strokeStyle = '#666666';
+                        ctx.stroke();
+                    }
+                    // Vertical
+                    if (i < params.rows) {
+                        const v3 = flatVerts[idx + widthPoints];
+                        ctx.beginPath();
+                        ctx.moveTo(mapX(v1.x), mapY(v1.z));
+                        ctx.lineTo(mapX(v3.x), mapY(v3.z));
+                        ctx.setLineDash([2, 4]); // DOTTED
+                        ctx.strokeStyle = '#666666';
+                        ctx.stroke();
+                    }
+
+                    // 2. DIAGONALS (Triangulation)
+                    if (params.showDiagonals && i < params.rows && j < params.cols) {
+                        const v2 = flatVerts[idx + 1];           // Top Right
+                        const v3 = flatVerts[idx + widthPoints]; // Bottom Left
+                        const v4 = flatVerts[idx + widthPoints + 1]; // Bottom Right
+
+                        // RED LINE (Ridge) - Top-Left to Bottom-Right (\)
+                        ctx.beginPath();
+                        ctx.moveTo(mapX(v1.x), mapY(v1.z));
+                        ctx.lineTo(mapX(v4.x), mapY(v4.z));
+                        ctx.setLineDash([10, 5]); // DASHED
+                        ctx.strokeStyle = '#ff0000'; // Red ink
+                        ctx.stroke();
+
+                        // GREEN LINE (Valley) - Bottom-Left to Top-Right (/)
+                        ctx.beginPath();
+                        ctx.moveTo(mapX(v3.x), mapY(v3.z));
+                        ctx.lineTo(mapX(v2.x), mapY(v2.z));
+                        ctx.setLineDash([15, 3, 3, 3]); // DOT-DASH
+                        ctx.strokeStyle = '#00aa00'; // Green ink
+                        ctx.stroke();
+                    }
+                }
+            }
+            
+            // Legend
+            ctx.font = '20px monospace';
+            ctx.fillStyle = '#000';
+            ctx.fillText(`ARCHITECTURAL INTELLIGENCE | TRUSS PATTERN`, 50, 50);
+            ctx.fillText(`Grey Dotted = Grid Layout`, 50, 80);
+            if (params.showDiagonals) {
+                 ctx.fillStyle = '#ff0000';
+                 ctx.fillText(`-- -- --  = Ridge (Red)`, 50, 110);
+                 ctx.fillStyle = '#00aa00';
+                 ctx.fillText(`-.-.-.-.  = Valley (Green)`, 400, 110);
+            }
+
+            // Download
+            const link = document.createElement('a');
+            link.download = 'miura-truss-blueprint.png';
+            link.href = cvs.toDataURL('image/png');
+            link.click();
+        }
+
+        // --- ANIMATION ---
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // --- UI ---
+        const pane = new Tweakpane.Pane({ title: 'The Kinetic' });
+        
+        pane.addInput(params, 'expansion', { min: 0.1, max: 1.0, label: 'Fold State' }).on('change', updateGeometry);
+        
+        const fGeo = pane.addFolder({ title: 'Geometry' });
+        fGeo.addInput(params, 'gamma', { min: 45, max: 90, step: 1, label: 'Shear Angle' }).on('change', updateGeometry);
+        fGeo.addInput(params, 'rows', { min: 1, max: 10, step: 1 }).on('change', initMesh);
+        fGeo.addInput(params, 'cols', { min: 1, max: 10, step: 1 }).on('change', initMesh);
+        
+        const fVis = pane.addFolder({ title: 'Visuals' });
+        fVis.addInput(params, 'paperColor', { label: 'Paper' }).on('change', () => { mesh.material.color.set(params.paperColor); });
+        fVis.addInput(params, 'showLines', { label: 'Grid Lines' }).on('change', () => { 
+            if(params.showLines) createScoreLines(); else scene.remove(lineSegments); 
+        });
+
+        // BLUEPRINT CONTROLS
+        const fPrint = pane.addFolder({ title: 'Blueprint Mode' });
+        fPrint.addInput(params, 'showDiagonals', { label: 'Add Triangulation' });
+        fPrint.addButton({ title: 'Download Blueprint (.PNG)' }).on('click', exportBlueprint);
+
+        // Init
+        initMesh();
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+    </script>
+</body>
+</html>

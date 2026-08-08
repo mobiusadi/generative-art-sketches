@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Architectural Intelligence | Joy Division</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.1.0/dist/tweakpane.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/simplex-noise/2.4.0/simplex-noise.min.js"></script>
+
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
+        canvas { display: block; width: 100%; height: 100%; }
+        
+        /* HOME BUTTON */
+        .home-btn {
+            position: fixed; top: 20px; left: 20px;
+            color: #666; text-decoration: none; font-family: 'Helvetica Neue', monospace;
+            font-size: 14px; z-index: 1000; transition: 0.3s; border: 1px solid #333; padding: 5px 10px;
+        }
+        .home-btn:hover { color: #fff; border-color: #fff; background: #111; }
+
+        /* DEBUG TEXT */
+        #status {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: lime; font-family: monospace; pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+    <a href="index.html" class="home-btn">← Home</a>
+    <div id="status">Initializing Engine...</div>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        // --- 1. SETUP NATIVE CANVAS ENGINE ---
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const status = document.getElementById('status');
+        
+        let width, height;
+        let simplex = new SimplexNoise(); // Initialize Noise
+
+        // Handle Resizing
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // --- 2. PARAMETERS ---
+        const params = {
+            lines: 80,
+            speed: 0.2,
+            amplitude: 150,    
+            frequency: 0.002, // Adjusted for native canvas scale
+            waterLevel: 0,     
+            lineWidth: 2.0,
+            peakBrightness: 100, 
+            valleyBrightness: 20, 
+            colorAmount: 0.0,  
+            colorTint: 200,    
+            seed: 123,
+        };
+
+        // --- 3. MATH HELPERS ---
+        const MathUtils = {
+            map: (v, iMin, iMax, oMin, oMax) => ((v - iMin) / (iMax - iMin) * (oMax - oMin) + oMin),
+            lerp: (min, max, t) => min * (1 - t) + max * t
+        };
+
+        // --- 4. THE RENDER LOOP ---
+        let frame = 0;
+
+        function animate() {
+            requestAnimationFrame(animate);
+            frame++;
+
+            // Clear Screen
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, width, height);
+
+            const margin = height * 0.1;
+            const drawHeight = height - margin * 2;
+            const gap = drawHeight / params.lines;
+
+            ctx.lineWidth = params.lineWidth;
+
+            for (let i = 0; i < params.lines; i++) {
+                const yBase = margin + i * gap;
+                
+                ctx.beginPath();
+                ctx.moveTo(0, height); 
+                // ctx.lineTo(0, yBase);  // Optimization: Don't draw side walls
+
+                const points = 100; // Resolution
+                let pointsArray = []; 
+
+                for (let j = 0; j <= points; j++) {
+                    const x = (j / points) * width;
+                    
+                    // Noise Inputs
+                    // We multiply by generic factors to match the "feel" of canvas-sketch
+                    const noiseValue = simplex.noise3D(
+                        x * params.frequency, 
+                        i * params.frequency * 50, // Separate lines
+                        frame * params.speed * 0.01
+                    );
+                    
+                    let n = noiseValue * params.amplitude;
+                    if (n < params.waterLevel) n = params.waterLevel;
+
+                    const y = yBase - n; 
+                    
+                    // First point move, others lineTo
+                    if (j === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+
+                    pointsArray.push({ x, y, n });
+                }
+
+                // Draw the black "fill" to hide lines behind
+                ctx.lineTo(width, height);
+                ctx.lineTo(0, height);
+                ctx.fillStyle = '#000';
+                ctx.fill();
+
+                // Draw the colored stroke on top
+                ctx.beginPath();
+                let first = true;
+                pointsArray.forEach(p => {
+                    if (first) { ctx.moveTo(p.x, p.y); first = false; }
+                    else { ctx.lineTo(p.x, p.y); }
+                });
+
+                // Color Calculation
+                const midPoint = pointsArray[Math.floor(points/2)];
+                const midN = midPoint ? midPoint.n : 0;
+                
+                // Normalize height (-amp to +amp -> 0 to 1)
+                const normalizedHeight = MathUtils.map(midN, -params.amplitude, params.amplitude, 0, 1);
+                const safeNorm = Math.max(0, Math.min(1, normalizedHeight));
+
+                const gray = MathUtils.lerp(params.valleyBrightness, params.peakBrightness, safeNorm);
+                
+                let saturation = 0;
+                if (safeNorm > 0.6) saturation = params.colorAmount * 80; 
+
+                ctx.strokeStyle = `hsl(${params.colorTint}, ${saturation}%, ${gray}%)`;
+                ctx.stroke();
+            }
+
+            // clear status
+            if(status) status.style.display = 'none';
+        }
+
+        // --- 5. INITIALIZE ---
+        try {
+            // Setup Controls
+            const pane = new Tweakpane.Pane({ title: 'Controls' });
+            
+            const f1 = pane.addFolder({ title: 'Geometry' });
+            f1.addInput(params, 'lines', { min: 10, max: 200 });
+            f1.addInput(params, 'amplitude', { min: 0, max: 400 });
+            f1.addInput(params, 'frequency', { min: 0.001, max: 0.01 }); // Adjusted scale
+            f1.addInput(params, 'speed', { min: 0, max: 2 });
+            
+            const f2 = pane.addFolder({ title: 'Style' });
+            f2.addInput(params, 'colorTint', { min: 0, max: 360, label: 'Hue' });
+            f2.addInput(params, 'colorAmount', { min: 0, max: 1 });
+            f2.addInput(params, 'peakBrightness', { min: 0, max: 100 });
+            
+            // Start Loop
+            animate();
+            
+        } catch(e) {
+            status.innerText = "Error: " + e.message;
+            status.style.color = 'red';
+        }
+
+    </script>
+</body>
+</html>

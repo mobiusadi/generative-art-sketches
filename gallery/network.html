@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Architectural Intelligence | Network</title>
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.1.0/dist/tweakpane.min.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
+        canvas { display: block; width: 100%; height: 100%; }
+        
+        .home-btn {
+            position: fixed; top: 20px; left: 20px;
+            color: #fff; text-decoration: none; font-family: monospace;
+            font-size: 14px; z-index: 1000; opacity: 0.5; transition: 0.3s;
+            mix-blend-mode: difference; border: 1px solid rgba(255,255,255,0.3);
+            padding: 5px 10px; background: rgba(0,0,0,0.5);
+        }
+        .home-btn:hover { opacity: 1.0; background: #fff; color: #000; }
+    </style>
+</head>
+<body>
+
+    <a href="index.html" class="home-btn">← Home</a>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        // --- 1. MATH HELPERS ---
+        const MathUtils = {
+            mapRange: (v, iMin, iMax, oMin, oMax) => ((v - iMin) / (iMax - iMin) * (oMax - oMin) + oMin),
+            dist: (x1, y1, x2, y2) => Math.sqrt((x1-x2)**2 + (y1-y2)**2)
+        };
+
+        // --- 2. AGENT CLASS ---
+        class Vector {
+            constructor(x, y) { this.x = x; this.y = y; }
+        }
+
+        class Agent {
+            constructor(x, y) {
+                this.pos = new Vector(x, y);
+                this.vel = new Vector((Math.random()-0.5)*2, (Math.random()-0.5)*2);
+                this.radius = MathUtils.mapRange(Math.random(), 0, 1, 4, 12);
+            }
+
+            bounce(width, height) {
+                if (this.pos.x <= 0 || this.pos.x >= width)  this.vel.x *= -1;
+                if (this.pos.y <= 0 || this.pos.y >= height) this.vel.y *= -1;
+            }
+
+            update(speed) {
+                this.pos.x += this.vel.x * speed;
+                this.pos.y += this.vel.y * speed;
+            }
+
+            draw(context, dotFill, dotStroke) {
+                context.save();
+                context.translate(this.pos.x, this.pos.y);
+                context.lineWidth = 4;
+                context.strokeStyle = dotStroke;
+                context.fillStyle = dotFill;
+                context.beginPath();
+                context.arc(0, 0, this.radius, 0, Math.PI * 2);
+                context.fill();
+                context.stroke();
+                context.restore();
+            }
+        }
+
+        // --- 3. MAIN SETUP ---
+        const canvas = document.getElementById('canvas');
+        const context = canvas.getContext('2d');
+
+        const params = {
+            count: 40,
+            speed: 1.0,
+            distLimit: 200,
+            
+            // Colors
+            bgColor: '#000000',
+            dotFill: '#000000',
+            dotStroke: '#ffffff',
+            
+            // Line Settings
+            rainbowLines: true,
+            fixedLineColor: '#ffffff',
+            maxLineWidth: 8
+        };
+
+        let width, height;
+        let agents = [];
+
+        function initAgents() {
+            agents = [];
+            for (let i = 0; i < params.count; i++) {
+                agents.push(new Agent(Math.random() * width, Math.random() * height));
+            }
+        }
+
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+            if(agents.length === 0) initAgents();
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // --- 4. ANIMATION LOOP ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            context.fillStyle = params.bgColor;
+            context.fillRect(0, 0, width, height);
+
+            // Nested Loop for Connections
+            for (let i = 0; i < agents.length; i++) {
+                const agent = agents[i];
+
+                for (let j = i + 1; j < agents.length; j++) {
+                    const other = agents[j];
+                    const dist = MathUtils.dist(agent.pos.x, agent.pos.y, other.pos.x, other.pos.y);
+
+                    if (dist > params.distLimit) continue;
+
+                    context.lineWidth = MathUtils.mapRange(dist, 0, params.distLimit, params.maxLineWidth, 1);
+
+                    if (params.rainbowLines) {
+                        // Map distance to Hue
+                        const hue = MathUtils.mapRange(dist, 0, params.distLimit, 0, 360);
+                        context.strokeStyle = `hsl(${hue}, 100%, 50%)`;
+                    } else {
+                        // Use Fixed Color but fade opacity based on distance
+                        const alpha = MathUtils.mapRange(dist, 0, params.distLimit, 1, 0.1);
+                        // Convert hex to rgba manually or rely on globalAlpha
+                        context.globalAlpha = alpha;
+                        context.strokeStyle = params.fixedLineColor;
+                    }
+
+                    context.beginPath();
+                    context.moveTo(agent.pos.x, agent.pos.y);
+                    context.lineTo(other.pos.x, other.pos.y);
+                    context.stroke();
+                    
+                    // Reset Alpha
+                    context.globalAlpha = 1.0;
+                }
+            }
+
+            // Draw Agents
+            agents.forEach(agent => {
+                agent.update(params.speed);
+                agent.draw(context, params.dotFill, params.dotStroke);
+                agent.bounce(width, height);
+            });
+        }
+
+        // --- 5. TWEAKPANE ---
+        const pane = new Tweakpane.Pane({ title: 'Network Controls' });
+        
+        const f1 = pane.addFolder({ title: 'System' });
+        f1.addInput(params, 'count', { min: 10, max: 100, step: 1 }).on('change', initAgents);
+        f1.addInput(params, 'speed', { min: 0, max: 5 });
+        f1.addInput(params, 'distLimit', { min: 50, max: 500 });
+        f1.addInput(params, 'bgColor');
+
+        const f2 = pane.addFolder({ title: 'Agents' });
+        f2.addInput(params, 'dotFill');
+        f2.addInput(params, 'dotStroke');
+
+        const f3 = pane.addFolder({ title: 'Connections' });
+        f3.addInput(params, 'maxLineWidth', { min: 1, max: 20 });
+        f3.addInput(params, 'rainbowLines');
+        f3.addInput(params, 'fixedLineColor');
+
+        initAgents();
+        animate();
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MOBIUS | Seasons Greetings</title>
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.1.0/dist/tweakpane.min.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #111; }
+        canvas { display: block; width: 100%; height: 100%; }
+        
+        .home-btn {
+            position: fixed; top: 20px; left: 20px;
+            color: #fff; text-decoration: none; font-family: monospace;
+            font-size: 14px; z-index: 1000; opacity: 0.5; transition: 0.3s;
+            mix-blend-mode: difference; border: 1px solid rgba(255,255,255,0.3);
+            padding: 5px 10px; background: rgba(0,0,0,0.5);
+        }
+        .home-btn:hover { opacity: 1.0; background: #fff; color: #000; }
+
+        /* CARD OVERLAY */
+        #card-overlay {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            text-align: center; pointer-events: none; z-index: 100;
+            text-shadow: 0 0 20px rgba(0,0,0,0.8);
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            opacity: 0; transition: opacity 2s ease-in;
+        }
+        #card-overlay.visible { opacity: 1; }
+        
+        .card-to { font-size: 1.5rem; color: #00ffff; margin-bottom: 10px; letter-spacing: 2px; text-transform: uppercase; }
+        .card-msg { font-size: 4rem; font-weight: 700; color: #fff; line-height: 1.1; margin-bottom: 20px; }
+        .card-from { font-size: 1.2rem; color: #aaa; font-style: italic; }
+
+    </style>
+</head>
+<body>
+
+    <a href="index.html" class="home-btn">← Home</a>
+    
+    <div id="card-overlay">
+        <div class="card-to" id="text-to"></div>
+        <div class="card-msg" id="text-msg"></div>
+        <div class="card-from" id="text-from"></div>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const context = canvas.getContext('2d');
+
+        // --- 1. PARSE URL PARAMS (The "Card" Logic) ---
+        const urlParams = new URLSearchParams(window.location.search);
+        const toName = urlParams.get('to');
+        const msgText = urlParams.get('msg');
+        const fromName = urlParams.get('from');
+
+        if (toName || msgText) {
+            document.getElementById('text-to').innerText = toName ? `FOR ${toName}` : '';
+            document.getElementById('text-msg').innerText = msgText || 'SEASON\'S GREETINGS';
+            document.getElementById('text-from').innerText = fromName ? `FROM ${fromName}` : 'FROM MOBIUS';
+            
+            // Fade in text after a moment
+            setTimeout(() => document.getElementById('card-overlay').classList.add('visible'), 500);
+            
+            // Update Title
+            document.title = `Greeting for ${toName || 'You'}`;
+        }
+
+        // --- 2. CONFIGURATION (Your Requested Defaults) ---
+        const params = {
+            rows: 4,
+            cols: 5,
+            margin: 0.48, // Specific scaling
+            
+            bgColor: '#111122',
+            lineColor: '#aaccff',
+            lineWidth: 1.5,
+
+            mode: 'Morphing',
+            morphSpeed: 0.1, // Very slow, graceful morph
+        };
+
+        let width, height;
+        let flakes = []; 
+        
+        const lerp = (start, end, t) => start * (1 - t) + end * t;
+        const degToRad = (deg) => deg * Math.PI / 180;
+        const randomRange = (min, max) => Math.random() * (max - min) + min;
+
+        function generateGenome() {
+            return {
+                branchCount: Math.floor(Math.random() * 4) + 2, 
+                branchAngle: randomRange(20, 70), 
+                lengthDecay: randomRange(0.4, 0.7), 
+                widthDecay: randomRange(0.5, 0.9),
+                maxDepth: Math.floor(Math.random() * 3) + 2, 
+                seed: Math.random() * 100 
+            };
+        }
+
+        class Snowflake {
+            constructor() {
+                this.frozenGenome = generateGenome();
+                this.genomeA = generateGenome();
+                this.genomeB = generateGenome();
+                this.morphProgress = 0;
+                this.morphPhase = Math.random() * Math.PI * 2;
+            }
+
+            update(deltaTime) {
+                if (params.mode === 'Morphing') {
+                    this.morphProgress += params.morphSpeed * deltaTime * 0.5;
+                    if (this.morphProgress >= 1.0) {
+                        this.morphProgress = 0;
+                        this.genomeA = this.genomeB;
+                        this.genomeB = generateGenome();
+                    }
+                }
+            }
+
+            getCurrentGenome() {
+                if (params.mode === 'Frozen') return this.frozenGenome;
+                const t = this.morphProgress;
+                const gA = this.genomeA;
+                const gB = this.genomeB;
+                return {
+                    branchCount: lerp(gA.branchCount, gB.branchCount, t),
+                    branchAngle: lerp(gA.branchAngle, gB.branchAngle, t),
+                    lengthDecay: lerp(gA.lengthDecay, gB.lengthDecay, t),
+                    widthDecay: lerp(gA.widthDecay, gB.widthDecay, t),
+                    maxDepth: lerp(gA.maxDepth, gB.maxDepth, t),
+                    seed: lerp(gA.seed, gB.seed, t)
+                };
+            }
+            regenerate() {
+                this.frozenGenome = generateGenome();
+                this.genomeA = generateGenome();
+                this.genomeB = generateGenome();
+                this.morphProgress = 0;
+            }
+        }
+
+        function drawBranch(ctx, length, thickness, depth, genome) {
+            if (depth <= 0 || length < 2 || thickness < 0.1) return;
+
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(length, 0);
+            ctx.lineWidth = thickness;
+            ctx.stroke();
+
+            ctx.translate(length, 0);
+            if (depth === 1) return;
+
+            const newLength = length * genome.lengthDecay;
+            const newThickness = thickness * genome.widthDecay;
+            const angleRad = degToRad(genome.branchAngle);
+            const branchPoints = Math.round(genome.branchCount);
+
+            for (let i = 1; i <= branchPoints; i++) {
+                const t = i / (branchPoints + 1);
+                const variance = Math.sin(genome.seed + depth + i) * 0.1;
+                const posOnStem = (t + variance) * -length; 
+
+                ctx.save();
+                ctx.translate(posOnStem, 0); 
+                
+                ctx.save(); ctx.rotate(angleRad);
+                drawBranch(ctx, newLength, newThickness, depth - 1, genome);
+                ctx.restore();
+
+                ctx.save(); ctx.rotate(-angleRad);
+                drawBranch(ctx, newLength, newThickness, depth - 1, genome);
+                ctx.restore();
+
+                ctx.restore(); 
+            }
+            drawBranch(ctx, newLength, newThickness, depth - 1, genome);
+        }
+
+        let lastTime = 0;
+        function animate(timeStamp) {
+            const deltaTime = (timeStamp - lastTime) / 1000 || 0; 
+            lastTime = timeStamp;
+            requestAnimationFrame(animate);
+
+            context.fillStyle = params.bgColor;
+            context.fillRect(0, 0, width, height);
+
+            const cellWidth = width / params.cols;
+            const cellHeight = height / params.rows;
+            const maxRadius = Math.min(cellWidth, cellHeight) * 0.5 * params.margin;
+
+            context.strokeStyle = params.lineColor;
+            context.lineCap = 'round';
+
+            let flakeIndex = 0;
+            for (let r = 0; r < params.rows; r++) {
+                for (let c = 0; c < params.cols; c++) {
+                    if (!flakes[flakeIndex]) flakes[flakeIndex] = new Snowflake();
+                    const flake = flakes[flakeIndex];
+
+                    flake.update(deltaTime);
+                    const genome = flake.getCurrentGenome();
+                    
+                    const centerX = c * cellWidth + cellWidth * 0.5;
+                    const centerY = r * cellHeight + cellHeight * 0.5;
+
+                    context.save();
+                    context.translate(centerX, centerY);
+                    if (params.mode === 'Morphing') {
+                         context.rotate(timeStamp * 0.0001 + flake.morphPhase);
+                    }
+
+                    for (let arm = 0; arm < 6; arm++) {
+                        context.save();
+                        context.rotate(arm * Math.PI / 3);
+                        drawBranch(context, maxRadius, params.lineWidth, Math.floor(genome.maxDepth), genome);
+                        context.restore();
+                    }
+                    context.restore();
+                    flakeIndex++;
+                }
+            }
+            if (flakes.length > params.rows * params.cols) flakes.length = params.rows * params.cols;
+        }
+
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+        }
+        window.addEventListener('resize', resize);
+
+        const pane = new Tweakpane.Pane({ title: 'Snowflake Generator' });
+        
+        const f1 = pane.addFolder({ title: 'Grid Layout' });
+        f1.addInput(params, 'rows', { min: 1, max: 6, step: 1 });
+        f1.addInput(params, 'cols', { min: 1, max: 8, step: 1 });
+        f1.addInput(params, 'margin', { min: 0.1, max: 1.0, label: 'Size scale' });
+
+        const f2 = pane.addFolder({ title: 'Behavior' });
+        f2.addInput(params, 'mode', { options: { Frozen: 'Frozen', Morphing: 'Morphing' } });
+        f2.addInput(params, 'morphSpeed', { min: 0.01, max: 1.0, label: 'Morph Speed' });
+        f2.addButton({ title: 'Regenerate Frozen' }).on('click', () => {
+            flakes.forEach(f => f.regenerate());
+        });
+
+        const f3 = pane.addFolder({ title: 'Style' });
+        f3.addInput(params, 'bgColor', { label: 'Background' });
+        f3.addInput(params, 'lineColor', { label: 'Ice Color' });
+        f3.addInput(params, 'lineWidth', { min: 0.5, max: 5.0 });
+
+        // Add a "Copy Link" button to easily share
+        pane.addSeparator();
+        pane.addButton({ title: 'Copy Card Link' }).on('click', () => {
+            const url = `${window.location.origin}${window.location.pathname}?to=CLIENT&msg=SEASON'S+GREETINGS`;
+            navigator.clipboard.writeText(url).then(() => alert('Link copied! Paste it in an email.'));
+        });
+
+        resize();
+        requestAnimationFrame(animate);
+
+    </script>
+</body>
+</html>

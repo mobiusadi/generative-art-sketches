@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Architectural Intelligence | Ellipse Engine</title>
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.1.0/dist/tweakpane.min.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #111; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <script type="module">
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        const params = {
+            // Playback
+            paused: false,
+            speed: 0.5,
+            parameter: 0.0,     // The angle (t)
+            
+            // Visuals
+            scale: 50,          // Zoom
+            a: 4.0,             // Semi-Major Axis (Width)
+            b: 2.5,             // Semi-Minor Axis (Height)
+            
+            // Toggles
+            showFoci: true,
+            showString: true,   // Renamed for clarity
+            showReflection: false,
+            showDimensions: true // New Toggle
+        };
+
+        let width, height;
+        let t = 0; 
+
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+        }
+        window.addEventListener('resize', resize);
+
+        function draw() {
+            ctx.fillStyle = '#111';
+            ctx.fillRect(0, 0, width, height);
+
+            const cx = width * 0.5; // Center X
+            const cy = height * 0.5; // Center Y
+            
+            // --- PHYSICS ---
+            if (!params.paused) {
+                t += params.speed * 0.02;
+                params.parameter = t % (Math.PI * 2); 
+            } else {
+                t = params.parameter;
+            }
+
+            const a = params.a;
+            const b = params.b;
+            
+            // --- MATH ---
+            // 1. Parametric Equation
+            const x = a * Math.cos(t);
+            const y = b * Math.sin(t);
+
+            // 2. Foci Calculation (c^2 = a^2 - b^2)
+            let c, f1x, f1y, f2x, f2y;
+            
+            if (a >= b) {
+                c = Math.sqrt(a*a - b*b);
+                f1x = cx - c * params.scale; f1y = cy;
+                f2x = cx + c * params.scale; f2y = cy;
+            } else {
+                c = Math.sqrt(b*b - a*a);
+                f1x = cx; f1y = cy - c * params.scale;
+                f2x = cx; f2y = cy + c * params.scale;
+            }
+
+            // Screen Coordinates
+            const sx = cx + x * params.scale;
+            const sy = cy - y * params.scale; // Invert Y
+
+            // --- DRAWING ---
+
+            // 0. ARCHITECTURAL GRID & AXES (New)
+            if (params.showDimensions) {
+                const dimColor = '#444'; // Faint Grey
+                const dimTextColor = '#666';
+
+                // Cartesian Axes
+                ctx.strokeStyle = dimColor;
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(0, cy); ctx.lineTo(width, cy); // X-Axis
+                ctx.moveTo(cx, 0); ctx.lineTo(cx, height); // Y-Axis
+                ctx.stroke();
+
+                // Current Offsets (Drop Lines)
+                ctx.setLineDash([2, 2]);
+                ctx.beginPath();
+                // Drop to X
+                ctx.moveTo(sx, sy); ctx.lineTo(sx, cy);
+                // Drop to Y
+                ctx.moveTo(sx, sy); ctx.lineTo(cx, sy);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                
+                // Offset Labels (x, y)
+                ctx.fillStyle = dimTextColor;
+                ctx.font = '10px monospace';
+                ctx.fillText('x', sx, cy + 12);
+                ctx.fillText('y', cx + 4, sy);
+
+                // --- DIMENSION LINES (CAD Style) ---
+                const offset = 40; // Distance from object to dim line
+                
+                // 1. Width Dimension (2a) - Below
+                const dimY = cy + b * params.scale + offset;
+                const leftX = cx - a * params.scale;
+                const rightX = cx + a * params.scale;
+                
+                ctx.strokeStyle = dimTextColor;
+                ctx.beginPath();
+                // Main Line
+                ctx.moveTo(leftX, dimY); ctx.lineTo(rightX, dimY);
+                // Extension Lines
+                ctx.moveTo(leftX, cy); ctx.lineTo(leftX, dimY + 5);
+                ctx.moveTo(rightX, cy); ctx.lineTo(rightX, dimY + 5);
+                // Tick Marks (Diagonals)
+                const tickSz = 5;
+                ctx.moveTo(leftX - tickSz, dimY - tickSz); ctx.lineTo(leftX + tickSz, dimY + tickSz);
+                ctx.moveTo(rightX - tickSz, dimY - tickSz); ctx.lineTo(rightX + tickSz, dimY + tickSz);
+                ctx.stroke();
+                
+                ctx.textAlign = 'center';
+                ctx.fillText(`2a = ${(2*a).toFixed(2)}`, cx, dimY + 15);
+
+                // 2. Height Dimension (2b) - Left Side
+                const dimX = cx - a * params.scale - offset;
+                const topY = cy - b * params.scale;
+                const bottomY = cy + b * params.scale;
+                
+                ctx.beginPath();
+                // Main Line
+                ctx.moveTo(dimX, topY); ctx.lineTo(dimX, bottomY);
+                // Extension Lines
+                ctx.moveTo(cx, topY); ctx.lineTo(dimX - 5, topY);
+                ctx.moveTo(cx, bottomY); ctx.lineTo(dimX - 5, bottomY);
+                // Tick Marks
+                ctx.moveTo(dimX - tickSz, topY - tickSz); ctx.lineTo(dimX + tickSz, topY + tickSz);
+                ctx.moveTo(dimX - tickSz, bottomY - tickSz); ctx.lineTo(dimX + tickSz, bottomY + tickSz);
+                ctx.stroke();
+                
+                // Vertical Text (Rotate)
+                ctx.save();
+                ctx.translate(dimX - 15, cy);
+                ctx.rotate(-Math.PI/2);
+                ctx.fillText(`2b = ${(2*b).toFixed(2)}`, 0, 0);
+                ctx.restore();
+            }
+
+
+            // 1. The Foci
+            if (params.showFoci) {
+                ctx.fillStyle = '#ffcc00';
+                ctx.beginPath(); ctx.arc(f1x, f1y, 4, 0, Math.PI*2); ctx.fill();
+                ctx.fillText("F1", f1x - 10, f1y + 20);
+                
+                ctx.beginPath(); ctx.arc(f2x, f2y, 4, 0, Math.PI*2); ctx.fill();
+                ctx.fillText("F2", f2x - 10, f2y + 20);
+            }
+
+            // 2. The Ellipse Curve
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            for (let i = 0; i <= Math.PI * 2; i += 0.05) {
+                const px = cx + (a * Math.cos(i)) * params.scale;
+                const py = cy - (b * Math.sin(i)) * params.scale;
+                if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+            }
+            ctx.closePath();
+            ctx.stroke();
+
+            // 3. Construction (The String)
+            if (params.showString) {
+                ctx.strokeStyle = '#ffcc00'; ctx.setLineDash([4, 4]); ctx.lineWidth = 1;
+                
+                ctx.beginPath(); ctx.moveTo(f1x, f1y); ctx.lineTo(sx, sy); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(f2x, f2y); ctx.lineTo(sx, sy); ctx.stroke();
+                
+                ctx.setLineDash([]);
+                ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(sx, sy, 5, 0, Math.PI*2); ctx.fill();
+            }
+
+            // 4. Tangent Reflection
+            if (params.showReflection) {
+                const tx = -a * Math.sin(t);
+                const ty = b * Math.cos(t);
+                const len = 300;
+                const dist = Math.sqrt(tx*tx + ty*ty);
+                const ndx = (tx / dist) * len;
+                const ndy = -(ty / dist) * len; 
+                
+                ctx.strokeStyle = '#444'; ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.moveTo(sx - ndx, sy - ndy); ctx.lineTo(sx + ndx, sy + ndy); ctx.stroke();
+                
+                ctx.strokeStyle = '#00ff00'; ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.moveTo(f1x, f1y); ctx.lineTo(sx, sy); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(f2x, f2y); ctx.stroke();
+            }
+
+            // --- HUD (Equations) ---
+            ctx.textAlign = 'center';
+            ctx.font = '14px monospace';
+            const hudY = height - 80;
+            const lineHeight = 20;
+            
+            ctx.fillStyle = '#666'; // Faint Grey
+            ctx.fillText(`Cartesian: x²/a² + y²/b² = 1`, cx, hudY);
+            
+            ctx.fillStyle = '#00ffff'; // Cyan for Parametric
+            ctx.fillText(`Parametric: x = ${a.toFixed(1)} cos t,  y = ${b.toFixed(1)} sin t`, cx, hudY + lineHeight);
+            
+            if (params.showString) {
+                 ctx.fillStyle = '#ffcc00'; // Yellow for Geometric
+                 ctx.fillText("Geometric: d(P,F1) + d(P,F2) = Constant", cx, hudY + lineHeight * 2);
+            }
+
+            ctx.textAlign = 'left';
+
+            requestAnimationFrame(draw);
+        }
+
+        // --- UI ---
+        const pane = new Tweakpane.Pane({ title: 'Ellipse Engine' });
+        
+        const fPlay = pane.addFolder({ title: 'Playback' });
+        fPlay.addInput(params, 'paused', { label: 'Pause' });
+        fPlay.addInput(params, 'speed', { min: 0, max: 2.0 });
+        fPlay.addInput(params, 'parameter', { min: 0, max: 6.28, label: 'Param (t)' }).on('change', (ev) => { if (params.paused) t = ev.value; });
+
+        const fGeo = pane.addFolder({ title: 'Geometry' });
+        fGeo.addInput(params, 'a', { min: 1.0, max: 6.0, label: 'Width (a)' });
+        fGeo.addInput(params, 'b', { min: 1.0, max: 6.0, label: 'Height (b)' });
+        fGeo.addInput(params, 'scale', { min: 10, max: 100, label: 'Zoom' });
+        
+        const fVis = pane.addFolder({ title: 'Visuals' });
+        fVis.addInput(params, 'showFoci', { label: 'Foci' });
+        fVis.addInput(params, 'showString', { label: 'String' });
+        fVis.addInput(params, 'showReflection', { label: 'Reflection' });
+        fVis.addInput(params, 'showDimensions', { label: 'Axes/Dims' });
+
+        const fAct = pane.addFolder({ title: 'Actions' });
+        fAct.addButton({ title: 'Save Image' }).on('click', () => {
+             const link = document.createElement('a');
+             link.download = 'ellipse_cad.png';
+             link.href = canvas.toDataURL();
+             link.click();
+        });
+
+        resize();
+        draw();
+    </script>
+</body>
+</html>

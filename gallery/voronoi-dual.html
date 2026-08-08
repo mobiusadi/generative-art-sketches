@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MOBIUS | Voronoi Dual</title>
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.1.0/dist/tweakpane.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3-delaunay@6"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
+        canvas { display: block; width: 100%; height: 100%; }
+        .home-btn {
+            position: fixed; top: 20px; left: 20px;
+            color: #fff; text-decoration: none; font-family: monospace;
+            font-size: 14px; z-index: 1000; opacity: 0.5; transition: 0.3s;
+            mix-blend-mode: difference; border: 1px solid rgba(255,255,255,0.3);
+            padding: 5px 10px; background: rgba(0,0,0,0.5);
+        }
+        .home-btn:hover { opacity: 1.0; background: #fff; color: #000; }
+    </style>
+</head>
+<body>
+
+    <a href="index.html" class="home-btn">← Home</a>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        // --- 1. SETUP ---
+        const canvas = document.getElementById('canvas');
+        const context = canvas.getContext('2d');
+
+        // Helpers replacing canvas-sketch-util
+        const randomRange = (min, max) => Math.random() * (max - min) + min;
+
+        // --- 2. CLASSES ---
+        class Vector {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+            }
+        }
+
+        class Agent {
+            constructor(x, y) {
+                this.pos = new Vector(x, y);
+                this.vel = new Vector(randomRange(-1, 1), randomRange(-1, 1));
+            }
+
+            bounce(width, height) {
+                if (this.pos.x <= 0 || this.pos.x >= width)  this.vel.x *= -1;
+                if (this.pos.y <= 0 || this.pos.y >= height) this.vel.y *= -1;
+            }
+
+            update(speed) {
+                this.pos.x += this.vel.x * speed;
+                this.pos.y += this.vel.y * speed;
+            }
+        }
+
+        // --- 3. PARAMETERS ---
+        const params = {
+            count: 40,
+            speed: 1,
+            background: '#000000',
+            // Voronoi
+            showVoronoi: true,
+            voronoiColor: '#333333',
+            voronoiWidth: 2,
+            // Delaunay
+            showDelaunay: true,
+            delaunayColor: '#00ffff', // The Mobius Cyan
+            delaunayWidth: 2,
+            // Dots
+            showDots: true,
+            dotColor: '#ffffff',
+            dotSize: 4
+        };
+
+        let width, height;
+        let agents = [];
+
+        // --- 4. LOGIC ---
+        function createAgents() {
+            agents = [];
+            for (let i = 0; i < params.count; i++) {
+                const x = randomRange(0, width);
+                const y = randomRange(0, height);
+                agents.push(new Agent(x, y));
+            }
+        }
+
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+            // Re-distribute agents if they get stuck off-screen? 
+            // Or just ensure we have agents.
+            if(agents.length === 0) createAgents();
+        }
+        window.addEventListener('resize', resize);
+
+        // --- 5. RENDER LOOP ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Clear Background
+            context.fillStyle = params.background;
+            context.fillRect(0, 0, width, height);
+
+            // Update Agents
+            agents.forEach(agent => {
+                agent.update(params.speed);
+                agent.bounce(width, height);
+            });
+
+            // Prepare Data for D3
+            // d3-delaunay expects a flat array [x0, y0, x1, y1, ...]
+            const points = [];
+            agents.forEach(agent => {
+                points.push([agent.pos.x, agent.pos.y]);
+            });
+
+            // Calculate Geometry
+            // Note: d3.Delaunay is available globally from the CDN script
+            const delaunay = d3.Delaunay.from(points);
+            const voronoi = delaunay.voronoi([0, 0, width, height]);
+
+            // A. Draw Voronoi (Cells)
+            if (params.showVoronoi) {
+                context.beginPath();
+                voronoi.render(context);
+                context.strokeStyle = params.voronoiColor;
+                context.lineWidth = params.voronoiWidth;
+                context.stroke();
+            }
+
+            // B. Draw Delaunay (Triangles/Connections)
+            if (params.showDelaunay) {
+                context.beginPath();
+                delaunay.render(context);
+                context.strokeStyle = params.delaunayColor;
+                context.lineWidth = params.delaunayWidth;
+                context.stroke();
+            }
+
+            // C. Draw Dots (Centers)
+            if (params.showDots) {
+                context.fillStyle = params.dotColor;
+                agents.forEach(agent => {
+                    context.beginPath();
+                    context.arc(agent.pos.x, agent.pos.y, params.dotSize, 0, Math.PI * 2);
+                    context.fill();
+                });
+            }
+        }
+
+        // --- 6. CONTROLS ---
+        const pane = new Tweakpane.Pane({ title: 'Voronoi Dual' });
+        
+        const f1 = pane.addFolder({ title: 'Simulation' });
+        f1.addInput(params, 'count', { min: 5, max: 200, step: 1 }).on('change', createAgents);
+        f1.addInput(params, 'speed', { min: 0, max: 5 });
+        f1.addInput(params, 'background');
+
+        const f2 = pane.addFolder({ title: 'Voronoi (Cells)' });
+        f2.addInput(params, 'showVoronoi');
+        f2.addInput(params, 'voronoiColor');
+        f2.addInput(params, 'voronoiWidth', { min: 1, max: 10 });
+
+        const f3 = pane.addFolder({ title: 'Delaunay (Network)' });
+        f3.addInput(params, 'showDelaunay');
+        f3.addInput(params, 'delaunayColor');
+        f3.addInput(params, 'delaunayWidth', { min: 1, max: 10 });
+        
+        const f4 = pane.addFolder({ title: 'Particles' });
+        f4.addInput(params, 'showDots');
+        f4.addInput(params, 'dotSize', { min: 1, max: 20 });
+
+        // Init
+        resize();
+        createAgents();
+        animate();
+
+    </script>
+</body>
+</html>

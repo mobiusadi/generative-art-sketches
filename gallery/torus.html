@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Architectural Intelligence | Torus</title>
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.1.0/dist/tweakpane.min.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #0a0a0a; }
+        canvas { display: block; }
+        .home-btn {
+            position: fixed; top: 20px; left: 20px;
+            color: #666; text-decoration: none; font-family: monospace;
+            font-size: 14px; z-index: 1000; border: 1px solid #333; padding: 5px 10px; transition: 0.3s;
+        }
+        .home-btn:hover { color: #fff; border-color: #fff; background: #111; }
+    </style>
+</head>
+<body>
+
+    <a href="index.html" class="home-btn">← Home</a>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height;
+        
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        const params = {
+            R: 150,     // Major Radius (Donut size)
+            r: 60,      // Minor Radius (Tube thickness)
+            uSteps: 30, // Resolution around ring
+            vSteps: 15, // Resolution of tube
+            speedX: 0.01,
+            speedY: 0.02,
+            scale: 1,
+            color: '#ffffff'
+        };
+
+        // Rotation angles
+        let angleX = 0;
+        let angleY = 0;
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Clear screen with trail effect? No, let's keep it crisp for now.
+            ctx.fillStyle = '#0a0a0a';
+            ctx.fillRect(0, 0, width, height);
+            
+            ctx.strokeStyle = params.color;
+            ctx.lineWidth = 1;
+
+            // Update rotation
+            angleX += params.speedX;
+            angleY += params.speedY;
+
+            // Center of screen
+            const cx = width / 2;
+            const cy = height / 2;
+
+            // DRAW TORUS
+            // We loop through angles theta (ring) and phi (tube)
+            for (let i = 0; i < params.uSteps; i++) {
+                const theta = (i / params.uSteps) * Math.PI * 2;
+                const nextTheta = ((i + 1) / params.uSteps) * Math.PI * 2;
+
+                for (let j = 0; j < params.vSteps; j++) {
+                    const phi = (j / params.vSteps) * Math.PI * 2;
+                    const nextPhi = ((j + 1) / params.vSteps) * Math.PI * 2;
+
+                    // Calculate 4 corners of a "quad" on the surface
+                    const p1 = getTorusPoint(theta, phi);
+                    const p2 = getTorusPoint(nextTheta, phi);
+                    const p3 = getTorusPoint(nextTheta, nextPhi);
+                    const p4 = getTorusPoint(theta, nextPhi);
+
+                    // Draw the quad
+                    ctx.beginPath();
+                    ctx.moveTo(p1.x + cx, p1.y + cy);
+                    ctx.lineTo(p2.x + cx, p2.y + cy);
+                    ctx.lineTo(p3.x + cx, p3.y + cy);
+                    ctx.lineTo(p4.x + cx, p4.y + cy);
+                    ctx.closePath();
+                    ctx.stroke();
+                }
+            }
+        }
+
+        // 3D Math Helper
+        function getTorusPoint(theta, phi) {
+            // 1. Generate point on Torus surface
+            // x = (R + r*cos(phi)) * cos(theta)
+            // y = (R + r*cos(phi)) * sin(theta)
+            // z = r * sin(phi)
+            
+            let x = (params.R + params.r * Math.cos(phi)) * Math.cos(theta);
+            let y = (params.R + params.r * Math.cos(phi)) * Math.sin(theta);
+            let z = params.r * Math.sin(phi);
+
+            // 2. Rotate around X axis
+            let y1 = y * Math.cos(angleX) - z * Math.sin(angleX);
+            let z1 = y * Math.sin(angleX) + z * Math.cos(angleX);
+            y = y1; z = z1;
+
+            // 3. Rotate around Y axis
+            let x1 = x * Math.cos(angleY) + z * Math.sin(angleY);
+            let z2 = -x * Math.sin(angleY) + z * Math.cos(angleY);
+            x = x1; 
+
+            // 4. Project 3D to 2D (Simple perspective)
+            // As things get further (z increases), they get smaller
+            // Use a simple perspective divide
+            const fov = 1000; 
+            const scale = fov / (fov + z);
+            
+            return {
+                x: x * scale * params.scale,
+                y: y * scale * params.scale
+            };
+        }
+
+        // Controls
+        const pane = new Tweakpane.Pane({ title: 'Torus Controls' });
+        pane.addInput(params, 'R', { min: 50, max: 300, label: 'Size' });
+        pane.addInput(params, 'r', { min: 10, max: 100, label: 'Thickness' });
+        pane.addInput(params, 'speedX', { min: 0, max: 0.1 });
+        pane.addInput(params, 'speedY', { min: 0, max: 0.1 });
+        pane.addInput(params, 'color');
+
+        animate();
+    </script>
+</body>
+</html>

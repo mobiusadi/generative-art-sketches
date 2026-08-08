@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Architectural Intelligence | True Flow</title>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; }
+        canvas { display: block; margin: 0 auto; }
+        
+        .home-btn {
+            position: fixed; top: 20px; left: 20px;
+            color: #fff; text-decoration: none; font-family: monospace;
+            font-size: 14px; z-index: 1000; opacity: 0.5; transition: 0.3s;
+            mix-blend-mode: difference; border: 1px solid rgba(255,255,255,0.3);
+            padding: 5px 10px; background: rgba(0,0,0,0.5);
+        }
+        .home-btn:hover { opacity: 1.0; background: #fff; color: #000; }
+    </style>
+</head>
+<body>
+
+    <a href="index.html" class="home-btn">← Home</a>
+
+    <script type="module">
+        // 1. IMPORT LIBRARIES (Version Pinned to v3 to fix the crash)
+        import canvasSketch from 'https://esm.sh/canvas-sketch@0.7.5';
+        import random from 'https://esm.sh/canvas-sketch-util@1.10.0/random';
+        import math from 'https://esm.sh/canvas-sketch-util@1.10.0/math';
+        import colormapPkg from 'https://esm.sh/colormap@2.3.2';
+        import { Pane } from 'https://esm.sh/tweakpane@3.1.9'; // <--- THIS IS THE FIX (@3)
+
+        // Fix for colormap export quirk
+        const colormap = colormapPkg.default || colormapPkg;
+
+        // 2. SETTINGS
+        const settings = {
+            dimensions: [ 1080, 1080 ],
+            animate: true,
+            scaleToView: true
+        };
+
+        // 3. PARAMS (Bruno's Defaults)
+        const params = {
+            cols: 72,
+            rows: 8,
+            frequency: 0.002,
+            amplitude: 90,
+            speed: 3,
+            midpointX: 0.8,
+            midpointY: 5.5,
+            displacement: 250,
+            palette: 'salinity'
+        };
+
+        // 4. THE SKETCH
+        const sketch = ({ width, height }) => {
+            return ({ context, width, height, frame }) => {
+                
+                const { cols, rows, frequency, amplitude, speed, midpointX, midpointY, displacement, palette } = params;
+                
+                const numCells = cols * rows;
+                const gw = width * 0.8;
+                const gh = height * 0.8;
+                const cw = gw / cols;
+                const ch = gh / rows;
+                const mx = (width - gw) * 0.5;
+                const my = (height - gh) * 0.5;
+
+                // Generate Palette
+                const colors = colormap({ 
+                    colormap: palette, 
+                    nshades: Math.max(Math.floor(amplitude), 2),
+                    format: 'hex',
+                    alpha: 1
+                });
+
+                const points = [];
+                for (let i = 0; i < numCells; i++) {
+                    const xGrid = (i % cols);
+                    const yGrid = Math.floor(i / cols);
+                    
+                    const ix = xGrid * cw;
+                    const iy = yGrid * ch;
+                    
+                    const n = random.noise2D(ix + frame * speed, iy, frequency, amplitude);
+                    const x = ix + n;
+                    const y = iy + n;
+                    const lineWidth = math.mapRange(n, -amplitude, amplitude, 0, 5);
+                    
+                    const colorIdx = Math.floor(math.mapRange(n, -amplitude, amplitude, 0, colors.length - 1));
+                    const color = colors[math.clamp(colorIdx, 0, colors.length - 1)];
+
+                    points.push({ x, y, ix, iy, lineWidth, color });
+                }
+
+                // Draw Background
+                context.fillStyle = 'black';
+                context.fillRect(0, 0, width, height);
+
+                context.save();
+                context.translate(mx, my);
+                context.translate(cw * 0.5, ch * 0.5);
+
+                let lastx, lasty;
+
+                for (let r = 0; r < rows; r++) {
+                    for (let c = 0; c < cols - 1; c++) {
+                        const curr = points[r * cols + c];
+                        const next = points[r * cols + c + 1];
+
+                        const midX = curr.x + (next.x - curr.x) * midpointX;
+                        const midY = curr.y + (next.y - curr.y) * midpointY;
+
+                        if (c === 0) {
+                            lastx = curr.x;
+                            lasty = curr.y;
+                        }
+
+                        context.beginPath();
+                        context.lineWidth = curr.lineWidth;
+                        context.strokeStyle = curr.color;
+
+                        context.moveTo(lastx, lasty);
+                        context.quadraticCurveTo(curr.x, curr.y, midX, midY);
+                        context.stroke();
+
+                        // Bruno's Displacement
+                        lastx = midX - (c / cols) * displacement;
+                        lasty = midY - (r / rows) * displacement;
+                    }
+                }
+                context.restore();
+            };
+        };
+
+        // 5. CONTROLS
+        const createPane = () => {
+            const pane = new Pane({ title: 'True Flow' });
+            
+            const f1 = pane.addFolder({ title: 'Grid' });
+            f1.addInput(params, 'frequency', { min: 0.0001, max: 0.01 });
+            f1.addInput(params, 'amplitude', { min: 10, max: 200 });
+            f1.addInput(params, 'speed', { min: 1, max: 20 });
+
+            const f2 = pane.addFolder({ title: 'Geometry' });
+            f2.addInput(params, 'midpointX', { min: 0.1, max: 2.0 });
+            f2.addInput(params, 'midpointY', { min: 0.1, max: 10.0 });
+            f2.addInput(params, 'displacement', { min: 0, max: 500 });
+            
+            const f3 = pane.addFolder({ title: 'Style' });
+            f3.addInput(params, 'palette', {
+                options: { Salinity: 'salinity', Magma: 'magma', Inferno: 'inferno', Viridis: 'viridis', Jet: 'jet' }
+            });
+        };
+
+        createPane();
+        canvasSketch(sketch, settings);
+
+    </script>
+</body>
+</html>

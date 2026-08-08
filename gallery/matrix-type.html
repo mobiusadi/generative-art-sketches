@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Architectural Intelligence | Type Architecture</title>
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.1.0/dist/tweakpane.min.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
+        canvas { display: block; width: 100%; height: 100%; }
+        .home-btn {
+            position: fixed; top: 20px; left: 20px;
+            color: #fff; text-decoration: none; font-family: monospace;
+            font-size: 14px; z-index: 1000; opacity: 0.5; transition: 0.3s;
+            mix-blend-mode: difference; border: 1px solid rgba(255,255,255,0.3);
+            padding: 5px 10px; background: rgba(0,0,0,0.5);
+        }
+        .home-btn:hover { opacity: 1.0; background: #fff; color: #000; }
+    </style>
+</head>
+<body>
+
+    <a href="index.html" class="home-btn">← Home</a>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        // --- 1. SETUP ---
+        const canvas = document.getElementById('canvas');
+        const context = canvas.getContext('2d');
+
+        // Off-screen canvas for reading pixel data
+        const typeCanvas = document.createElement('canvas');
+        const typeContext = typeCanvas.getContext('2d');
+
+        const params = {
+            text: 'AI',        // Default changed to AI
+            fontFamily: 'serif',
+            cell: 20,           
+            scaleChance: 0.1,   
+            scaleMult: 6,       
+            bgGlyphs: '_= /'.split(''), 
+            textColor: '#ffffff',
+            bgColor: '#000000'
+        };
+
+        let width, height, cols, rows, numCells;
+
+        // --- 2. RESIZE HANDLER ---
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+
+            cols = Math.floor(width / params.cell);
+            rows = Math.floor(height / params.cell);
+            numCells = cols * rows;
+
+            typeCanvas.width = cols;
+            typeCanvas.height = rows;
+
+            render();
+        }
+        window.addEventListener('resize', resize);
+
+        // --- 3. GLYPH LOGIC ---
+        function getGlyph(v) {
+            if (v < 50) return '';
+            if (v < 100) return '.';
+            if (v < 150) return '-';
+            if (v < 200) return '+';
+            return params.bgGlyphs[Math.floor(Math.random() * params.bgGlyphs.length)];
+        }
+
+        // --- 4. RENDER LOOP ---
+        function render() {
+            // A. Draw to TypeCanvas (The Ghost Image)
+            typeContext.fillStyle = 'black';
+            typeContext.fillRect(0, 0, cols, rows);
+            typeContext.fillStyle = 'white';
+
+            // --- NEW: Smart Font Sizing & Centering ---
+            // 1. Define margins (e.g., 5% padding on edges)
+            const marginX = cols * 0.05;
+            const marginY = rows * 0.05;
+            const maxWidth = cols - (marginX * 2);
+            const maxHeight = rows - (marginY * 2);
+
+            // 2. Iteratively find the biggest font size that fits
+            let fontSize = 10;
+            typeContext.font = `bold ${fontSize}px ${params.fontFamily}`;
+            let metrics = typeContext.measureText(params.text);
+            let textWidth = metrics.width;
+            // Estimate height using ascent/descent bounding box
+            let textHeight = (metrics.actualBoundingBoxAscent || fontSize * 0.8) + (metrics.actualBoundingBoxDescent || fontSize * 0.2);
+
+            // Keep increasing size until it hits the bounds
+            while (textWidth < maxWidth && textHeight < maxHeight && fontSize < 4000) {
+                fontSize += 5; // Increase step size for speed
+                typeContext.font = `bold ${fontSize}px ${params.fontFamily}`;
+                metrics = typeContext.measureText(params.text);
+                textWidth = metrics.width;
+                textHeight = (metrics.actualBoundingBoxAscent || fontSize * 0.8) + (metrics.actualBoundingBoxDescent || fontSize * 0.2);
+            }
+            // Step back slightly to ensure fit
+            fontSize -= 5;
+
+            // 3. Draw Centered
+            typeContext.font = `bold ${fontSize}px ${params.fontFamily}`;
+            typeContext.textBaseline = 'middle';
+            typeContext.textAlign = 'center';
+            // Draw at the center point of the grid
+            typeContext.fillText(params.text, cols / 2, rows / 2);
+            // -------------------------------------------
+
+            const typeData = typeContext.getImageData(0, 0, cols, rows).data;
+
+            // B. Draw to Main Context
+            context.fillStyle = params.bgColor;
+            context.fillRect(0, 0, width, height);
+
+            context.textBaseline = 'middle';
+            context.textAlign = 'center';
+            context.fillStyle = params.textColor;
+
+            for (let i = 0; i < numCells; i++) {
+                const col = i % cols;
+                const row = Math.floor(i / cols);
+
+                const x = col * params.cell;
+                const y = row * params.cell;
+
+                const r = typeData[i * 4 + 0];
+                const glyph = getGlyph(r);
+
+                // Original Font Logic
+                context.font = `${params.cell * 2}px ${params.fontFamily}`;
+                let alpha = 1.0;
+                if (Math.random() < params.scaleChance) {
+                    context.font = `${params.cell * params.scaleMult}px ${params.fontFamily}`;
+                    alpha = 0.7; // Add slight transparency to big overlaps for better readability
+                }
+
+                context.save();
+                context.translate(x + params.cell * 0.5, y + params.cell * 0.5);
+                context.globalAlpha = alpha;
+                context.fillText(glyph, 0, 0);
+                context.restore();
+            }
+        }
+
+        // --- 5. INTERACTION (UPDATED for typing) ---
+        const onKeyUp = (e) => {
+            // Don't trigger when typing in Tweakpane inputs
+            if (e.target.tagName === 'INPUT') return;
+
+            if (e.key === 'Backspace') {
+                params.text = params.text.slice(0, -1);
+            } else if (e.key.length === 1) {
+                params.text += e.key.toUpperCase();
+            }
+            
+            // Update GUI and Render
+            pane.refresh();
+            render();
+        };
+        // Change to 'keydown' for better backspace handling
+        document.addEventListener('keydown', onKeyUp);
+
+
+        // --- 6. CONTROLS ---
+        const pane = new Tweakpane.Pane({ title: 'Type Architecture' });
+        
+        pane.addInput(params, 'text').on('change', render);
+        pane.addInput(params, 'cell', { min: 5, max: 100, step: 1, label: 'Cell Size' }).on('change', resize);
+        
+        const fChaos = pane.addFolder({ title: 'Chaos' });
+        fChaos.addInput(params, 'scaleChance', { min: 0, max: 1 }).on('change', render);
+        fChaos.addInput(params, 'scaleMult', { min: 1, max: 20 }).on('change', render);
+
+        const fStyle = pane.addFolder({ title: 'Style' });
+        fStyle.addInput(params, 'textColor').on('change', render);
+        fStyle.addInput(params, 'bgColor').on('change', render);
+        fStyle.addInput(params, 'fontFamily', { options: { Serif: 'serif', Sans: 'sans-serif', Monospace: 'monospace' } }).on('change', render);
+
+        pane.addButton({ title: 'Regenerate' }).on('click', render);
+        
+        pane.addButton({ title: 'Save .PNG' }).on('click', () => {
+            const link = document.createElement('a');
+            link.download = `type-arch-${Date.now()}.png`;
+            link.href = canvas.toDataURL();
+            link.click();
+        });
+
+        // Start
+        resize();
+
+    </script>
+</body>
+</html>

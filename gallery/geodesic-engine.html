@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Architectural Intelligence | Geodesic Engine</title>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.1.0/dist/tweakpane.min.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #111; font-family: monospace; }
+        canvas { display: block; }
+        
+        #hud {
+            position: absolute; top: 20px; left: 20px; width: 280px;
+            pointer-events: none; color: #ccc;
+            background: rgba(0,0,0,0.75); padding: 15px;
+            border-left: 2px solid #00ffff;
+        }
+        .title { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 5px; color:#888;}
+        .val { color: #fff; font-weight: bold; }
+        .sub-val { color: #00ffff; font-size: 11px; margin-top: 5px; }
+    </style>
+</head>
+<body>
+    <div id="hud">
+        <div class="title">GEODESIC ENGINE</div>
+        <div>Topology: <span id="lbl-topo" class="val">Icosahedron</span></div>
+        <div>Faces: <span id="lbl-faces" class="val">20</span></div>
+        <div id="lbl-desc" class="sub-val">Base Platonic Solid</div>
+    </div>
+    
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // --- SETUP ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a0a0a);
+        
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(5, 4, 5);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.localClippingEnabled = true; // Enable the "Dome" cut
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.autoRotate = true;
+        controls.autoRotateSpeed = 0.5;
+
+        // Lights
+        const ambient = new THREE.AmbientLight(0xffffff, 0.3);
+        scene.add(ambient);
+        const p1 = new THREE.PointLight(0xffffff, 1);
+        p1.position.set(10, 10, 10);
+        scene.add(p1);
+        const p2 = new THREE.PointLight(0x00ffff, 0.8);
+        p2.position.set(-10, -5, -10);
+        scene.add(p2);
+
+        // --- GEOMETRY GROUPS ---
+        const coreGroup = new THREE.Group();
+        scene.add(coreGroup);
+        
+        const shellGroup = new THREE.Group();
+        scene.add(shellGroup);
+
+        const PHI = (1 + Math.sqrt(5)) / 2;
+
+        // 1. THE GOLDEN CORE (Static)
+        function createCoreRect(w, h, color, axis) {
+            const g = new THREE.PlaneGeometry(w, h);
+            const m = new THREE.MeshBasicMaterial({ color: color, side: THREE.DoubleSide, transparent:true, opacity:0.15 });
+            const mesh = new THREE.Mesh(g, m);
+            mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(g), new THREE.LineBasicMaterial({color:color})));
+            if (axis==='x') mesh.rotateX(Math.PI/2);
+            if (axis==='y') mesh.rotateY(Math.PI/2);
+            return mesh;
+        }
+        // Corrected dimensions from v1.1
+        coreGroup.add(createCoreRect(2, 2*PHI, 0x00ffff));       // Cyan (XY)
+        coreGroup.add(createCoreRect(2*PHI, 2, 0xff0055, 'y'));  // Pink (YZ)
+        coreGroup.add(createCoreRect(2*PHI, 2, 0xffcc00, 'x'));  // Yellow (XZ)
+
+
+        // 2. THE GEODESIC SHELL (Dynamic)
+        // Definition: Base radius matching the vertices of the rects
+        const RADIUS = Math.sqrt(1 + PHI*PHI);
+        
+        // Clipping Plane for "Dome Mode"
+        // Cuts everything below Y=0
+        const clipPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+        
+        let currentMesh = null;
+        let currentWire = null;
+        let currentPoints = null;
+
+        function updateShell(detail, isDome) {
+            // Cleanup old
+            if (currentMesh) {
+                currentMesh.geometry.dispose();
+                shellGroup.remove(currentMesh);
+            }
+            if (currentWire) {
+                currentWire.geometry.dispose();
+                shellGroup.remove(currentWire);
+            }
+            if (currentPoints) {
+                currentPoints.geometry.dispose();
+                shellGroup.remove(currentPoints);
+            }
+
+            // Generate Geometry
+            const geo = new THREE.IcosahedronGeometry(RADIUS, detail);
+            
+            // Apply Clipping if Dome Mode
+            const planes = isDome ? [clipPlane] : [];
+
+            // A. The Glass Panels
+            const matShell = new THREE.MeshPhysicalMaterial({ 
+                color: 0x222222,
+                roughness: 0.1,
+                metalness: 0.1,
+                transmission: 0.2, // Glass-like
+                transparent: true,
+                opacity: 0.6,
+                side: THREE.DoubleSide,
+                polygonOffset: true,
+                polygonOffsetFactor: 1, // Push back to let wireframe show
+                clippingPlanes: planes,
+                clipShadows: true
+            });
+            currentMesh = new THREE.Mesh(geo, matShell);
+            shellGroup.add(currentMesh);
+
+            // B. The Struts (Wireframe)
+            // We use WireframeGeometry to get strict edges (no diagonals in quads, triangles only)
+            const wireGeo = new THREE.WireframeGeometry(geo);
+            const matWire = new THREE.LineBasicMaterial({ 
+                color: 0xffffff, 
+                linewidth: 2,
+                clippingPlanes: planes
+            });
+            currentWire = new THREE.LineSegments(wireGeo, matWire);
+            shellGroup.add(currentWire);
+
+            // C. The Nodes (Vertices)
+            // Using Points is efficient for high detail
+            const matPoints = new THREE.PointsMaterial({
+                color: 0x00ffff,
+                size: 0.15,
+                clippingPlanes: planes
+            });
+            currentPoints = new THREE.Points(geo, matPoints);
+            shellGroup.add(currentPoints);
+
+            // Update HUD Stats
+            const faceCount = 20 * Math.pow(4, detail); // Approximation for Icosahedron subdiv
+            document.getElementById('lbl-faces').innerText = faceCount;
+            
+            let topo = "Icosahedron";
+            let desc = "Base Platonic Solid";
+            if(detail === 1) { topo = "Subdiv L1"; desc = "Frequency 2 (Edges halved)"; }
+            if(detail === 2) { topo = "Subdiv L2"; desc = "Frequency 4 (Geodesic Sphere)"; }
+            if(detail >= 3) { topo = "Subdiv L"+detail; desc = "High-Poly Architectural Shell"; }
+            
+            document.getElementById('lbl-topo').innerText = topo;
+            document.getElementById('lbl-desc').innerText = desc;
+        }
+
+        // --- STATE ---
+        const params = {
+            detail: 0,
+            domeMode: false,
+            showCore: true,
+            rotate: true
+        };
+
+        function refresh() {
+            updateShell(params.detail, params.domeMode);
+            coreGroup.visible = params.showCore;
+            controls.autoRotate = params.rotate;
+        }
+
+        // --- UI ---
+        const pane = new Tweakpane.Pane({ title: 'Geodesic Controls' });
+        
+        pane.addInput(params, 'detail', { min: 0, max: 4, step: 1, label: 'Subdivision' }).on('change', refresh);
+        pane.addInput(params, 'domeMode', { label: 'Dome Mode' }).on('change', refresh);
+        pane.addInput(params, 'showCore', { label: 'Show DNA' }).on('change', refresh);
+        pane.addInput(params, 'rotate').on('change', refresh);
+
+        pane.addButton({ title: 'Download Render' }).on('click', () => {
+            renderer.render(scene, camera);
+            const link = document.createElement('a');
+            link.download = 'geodesic_structure.png';
+            link.href = renderer.domElement.toDataURL();
+            link.click();
+        });
+
+        // Initialize
+        refresh();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+
+    </script>
+</body>
+</html>

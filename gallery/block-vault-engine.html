@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Architectural Intelligence | Funicular Engine v8</title>
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.1.0/dist/tweakpane.min.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background: #111; font-family: monospace; }
+        #hud { position: absolute; top: 20px; left: 20px; color: #888; pointer-events: none; background: rgba(0,0,0,0.85); padding: 15px; border-left: 2px solid #ffcc00; width: 320px; }
+        .val { color: #fff; font-weight: bold; }
+        .mode { color: #ffcc00; font-weight: bold; }
+        .highlight { color: #00ffff; }
+        .metric-big { font-size: 18px; color: #00ff41; margin-top: 5px; display: block; }
+        .metric-sub { font-size: 14px; color: #00aaff; margin-top: 2px; display: block; }
+    </style>
+</head>
+<body>
+    <div id="hud">
+        <div style="font-size:10px; letter-spacing:2px; margin-bottom:5px;">FUNICULAR ENGINE V8</div>
+        <div>STATE: <span id="val-state" class="mode">HANGING (TENSION)</span></div>
+        <div>SHAPE: <span id="val-shape" class="highlight">SQUARE</span></div>
+        <div style="margin-top:10px; border-top:1px solid #333; padding-top:5px;">
+            HEIGHT: <span id="val-height" class="metric-big">0.00m</span>
+            SPAN: <span id="val-span" class="metric-sub">0.00m</span>
+        </div>
+        <div style="font-size:10px; color:#666; margin-top:10px;">
+            *Turn <strong>Shear Bracing OFF</strong> for smooth fabric flow.<br>
+            *Turn <strong>ON</strong> for rigid truss stability.
+        </div>
+    </div>
+    
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // --- SETUP ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x111111);
+        
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 40, 50);
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+        
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.autoRotate = true;
+        controls.autoRotateSpeed = 0.5;
+
+        // --- LIGHTS ---
+        scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+        const sun = new THREE.DirectionalLight(0xffffff, 1);
+        sun.position.set(20, 50, 20);
+        scene.add(sun);
+
+        // --- VISUAL HELPERS ---
+        const gridHelper = new THREE.GridHelper(100, 100, 0x333333, 0x1a1a1a);
+        scene.add(gridHelper);
+        const dimGroup = new THREE.Group();
+        scene.add(dimGroup);
+
+        // --- PARAMS ---
+        const params = {
+            shape: 'Square', 
+            baseSize: 20,    
+            rectWidth: 20,   
+            rectLength: 20,  
+            supports: 'Corners', 
+            resolution: 20, // Lower res = smoother curves visually
+            slack: 1.2,     // Higher slack = deeper flow
+            stiffness: 0.5,
+            shear: false,   // DEFAULT OFF for "Flow"
+            anchorHeight: 0,
+            gravity: 0.05,
+            damping: 0.90,
+            inverted: false,
+            run: true
+        };
+
+        let particles = [];
+        let constraints = [];
+        let nodeMap = [];
+        let geometry, mesh;
+
+        // --- PHYSICS ---
+        class Particle {
+            constructor(x, y, z, pinned) {
+                this.pos = new THREE.Vector3(x, y, z);
+                this.oldPos = new THREE.Vector3(x, y, z); 
+                this.acc = new THREE.Vector3(0, 0, 0);
+                this.pinned = pinned;
+            }
+            integrate() {
+                if (this.pinned) return;
+                const vel = this.pos.clone().sub(this.oldPos).multiplyScalar(params.damping);
+                this.oldPos.copy(this.pos);
+                this.pos.add(vel).add(this.acc);
+                this.acc.set(0, 0, 0);
+            }
+        }
+
+        // --- DXF EXPORT ---
+        function exportDXF() {
+            let dxf = "0\nSECTION\n2\nENTITIES\n";
+            const indices = geometry.index.array;
+            const positions = geometry.attributes.position.array;
+            for (let i = 0; i < indices.length; i += 6) {
+                dxf += "0\n3DFACE\n8\nVault_Mesh\n";
+                const idx1 = indices[i]; const idx2 = indices[i+1]; const idx3 = indices[i+2];
+                dxf += `10\n${positions[idx1*3]}\n20\n${positions[idx1*3+2]}\n30\n${positions[idx1*3+1]}\n`; 
+                dxf += `11\n${positions[idx2*3]}\n21\n${positions[idx2*3+2]}\n31\n${positions[idx2*3+1]}\n`;
+                dxf += `12\n${positions[idx3*3]}\n22\n${positions[idx3*3+2]}\n32\n${positions[idx3*3+1]}\n`;
+                dxf += `13\n${positions[idx3*3]}\n23\n${positions[idx3*3+2]}\n33\n${positions[idx3*3+1]}\n`;
+                
+                if (i+5 < indices.length) {
+                    const idxA = indices[i+3]; const idxB = indices[i+4]; const idxC = indices[i+5];
+                    dxf += "0\n3DFACE\n8\nVault_Mesh\n";
+                    dxf += `10\n${positions[idxA*3]}\n20\n${positions[idxA*3+2]}\n30\n${positions[idxA*3+1]}\n`;
+                    dxf += `11\n${positions[idxB*3]}\n21\n${positions[idxB*3+2]}\n31\n${positions[idxB*3+1]}\n`;
+                    dxf += `12\n${positions[idxC*3]}\n22\n${positions[idxC*3+2]}\n32\n${positions[idxC*3+1]}\n`;
+                    dxf += `13\n${positions[idxC*3]}\n23\n${positions[idxC*3+2]}\n33\n${positions[idxC*3+1]}\n`;
+                }
+            }
+            dxf += "0\nENDSEC\n0\nEOF";
+            const blob = new Blob([dxf], { type: 'application/dxf' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'funicular_vault.dxf';
+            link.click();
+        }
+
+        // --- DIMENSIONS ---
+        function createTextSprite(message, color) {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = 256; canvas.height = 128;
+            ctx.fillStyle = "rgba(0,0,0,0)";
+            ctx.fillRect(0,0,256,128);
+            ctx.font = "Bold 40px monospace";
+            ctx.fillStyle = color;
+            ctx.textAlign = "center";
+            ctx.fillText(message, 128, 70);
+            const tex = new THREE.CanvasTexture(canvas);
+            const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
+            const sprite = new THREE.Sprite(mat);
+            sprite.scale.set(10, 5, 1);
+            return sprite;
+        }
+
+        function updateDimensions(topY, bottomY, peakX, peakZ) {
+            dimGroup.clear();
+            if (!params.run && Math.abs(topY-bottomY) < 0.1) return;
+
+            const height = Math.abs(topY - bottomY);
+            const matVert = new THREE.LineBasicMaterial({ color: 0x00ff41, transparent:true, opacity: 0.6, depthTest:false });
+            const lineV = new THREE.Line(new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(peakX, bottomY, peakZ), new THREE.Vector3(peakX, topY, peakZ)
+            ]), matVert);
+            dimGroup.add(lineV);
+            
+            const lblH = createTextSprite(height.toFixed(2)+"m", "#00ff41");
+            lblH.position.set(peakX + 2, (topY+bottomY)/2, peakZ);
+            dimGroup.add(lblH);
+
+            let spanLen = 0;
+            if (params.shape === 'Square') spanLen = params.baseSize;
+            else if (params.shape === 'Rectangle') spanLen = params.rectWidth;
+            else if (params.shape === 'Circle') spanLen = params.baseSize * 2;
+            else if (params.shape === 'Hexagon') spanLen = params.baseSize * 2 * 0.866;
+
+            const zPos = (params.shape==='Rectangle'?params.rectLength:params.baseSize)/2 + 4; 
+            const halfS = spanLen/2;
+            
+            const matHorz = new THREE.LineBasicMaterial({ color: 0x00aaff, transparent:true, opacity: 0.6, depthTest:false });
+            const lineH = new THREE.Line(new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(-halfS, params.anchorHeight, zPos), 
+                new THREE.Vector3(halfS, params.anchorHeight, zPos)
+            ]), matHorz);
+            dimGroup.add(lineH);
+
+            const lblS = createTextSprite(spanLen.toFixed(2)+"m", "#00aaff");
+            lblS.position.set(0, params.anchorHeight, zPos + 2);
+            dimGroup.add(lblS);
+            
+            document.getElementById('val-height').innerText = height.toFixed(2) + "m";
+            document.getElementById('val-span').innerText = spanLen.toFixed(2) + "m";
+        }
+
+        // --- SHAPE ---
+        function isInside(x, z, shape) {
+            if (shape === 'Rectangle') return Math.abs(x) <= params.rectWidth/2 && Math.abs(z) <= params.rectLength/2;
+            if (shape === 'Square') return Math.abs(x) <= params.baseSize/2 && Math.abs(z) <= params.baseSize/2;
+            if (shape === 'Circle') return (x*x + z*z) <= (params.baseSize * params.baseSize);
+            if (shape === 'Hexagon') {
+                const size = params.baseSize;
+                const dx = Math.abs(x); const dz = Math.abs(z);
+                return (dz <= size * 0.866) && (dx * 0.866 + dz * 0.5 <= size * 0.866);
+            }
+            return false;
+        }
+
+        function getIdealCorners(shape) {
+            if (shape === 'Rectangle') {
+                const w = params.rectWidth/2; const l = params.rectLength/2;
+                return [ {x:w, z:l}, {x:-w, z:l}, {x:w, z:-l}, {x:-w, z:-l} ];
+            }
+            if (shape === 'Square') {
+                const s = params.baseSize/2;
+                return [ {x:s, z:s}, {x:-s, z:s}, {x:s, z:-s}, {x:-s, z:-s} ];
+            }
+            if (shape === 'Circle') {
+                const pts = [];
+                for(let i=0; i<8; i++) {
+                    const a = (i/8) * Math.PI * 2;
+                    pts.push({x: Math.cos(a)*params.baseSize, z: Math.sin(a)*params.baseSize});
+                }
+                return pts;
+            }
+            if (shape === 'Hexagon') {
+                const pts = [];
+                const s = params.baseSize;
+                for(let i=0; i<6; i++) {
+                    const a = (i/6) * Math.PI * 2;
+                    pts.push({x: Math.cos(a)*s, z: Math.sin(a)*s});
+                }
+                return pts;
+            }
+            return [];
+        }
+
+        // --- INIT ---
+        function initSystem() {
+            particles = [];
+            constraints = [];
+            nodeMap = [];
+            
+            if(mesh) scene.remove(mesh);
+            
+            const maxDim = Math.max(params.baseSize, params.rectLength, params.rectWidth) * 2.5;
+            const size = maxDim; 
+            const step = size / params.resolution;
+            const offset = size / 2;
+
+            for(let i=0; i<=params.resolution; i++) {
+                nodeMap[i] = [];
+                for(let j=0; j<=params.resolution; j++) {
+                    const x = i * step - offset;
+                    const z = j * step - offset;
+                    if (isInside(x, z, params.shape)) {
+                        const p = new Particle(x, 0, z, false);
+                        particles.push(p);
+                        nodeMap[i][j] = particles.length - 1;
+                    } else {
+                        nodeMap[i][j] = -1;
+                    }
+                }
+            }
+
+            for(let i=0; i<=params.resolution; i++) {
+                for(let j=0; j<=params.resolution; j++) {
+                    const idx = nodeMap[i][j];
+                    if (idx === -1) continue;
+                    const p = particles[idx];
+                    let isBoundary = false;
+                    
+                    // Main Grid Springs
+                    const neighbors = [{di:1, dj:0}, {di:0, dj:1}]; 
+                    neighbors.forEach(n => {
+                        const ni = i+n.di; const nj = j+n.dj;
+                        if (ni>=0 && ni<=params.resolution && nj>=0 && nj<=params.resolution && nodeMap[ni][nj]!==-1) {
+                            const nIdx = nodeMap[ni][nj];
+                            const dist = p.pos.distanceTo(particles[nIdx].pos);
+                            constraints.push({p1: idx, p2: nIdx, restLen: dist, shear: false});
+                        }
+                    });
+
+                    // SHEAR SPRINGS (Conditional)
+                    if (params.shear) {
+                        const diags = [{di:1, dj:1}, {di:1, dj:-1}];
+                        diags.forEach(n => {
+                            const ni = i+n.di; const nj = j+n.dj;
+                            if (ni>=0 && ni<=params.resolution && nj>=0 && nj<=params.resolution && nodeMap[ni][nj]!==-1) {
+                                const nIdx = nodeMap[ni][nj];
+                                const dist = p.pos.distanceTo(particles[nIdx].pos);
+                                constraints.push({p1: idx, p2: nIdx, restLen: dist, shear: true});
+                            }
+                        });
+                    }
+
+                    // Boundary
+                    const check = [{di:1, dj:0}, {di:-1, dj:0}, {di:0, dj:1}, {di:0, dj:-1}];
+                    check.forEach(n => {
+                        const ni = i+n.di; const nj = j+n.dj;
+                        if (ni<0 || ni>params.resolution || nj<0 || nj>params.resolution || nodeMap[ni][nj]===-1) isBoundary = true;
+                    });
+
+                    if (params.supports === 'Perimeter' && isBoundary) p.pinned = true;
+                }
+            }
+
+            if (params.supports === 'Corners') {
+                const ideals = getIdealCorners(params.shape);
+                ideals.forEach(target => {
+                    let minDist = Infinity;
+                    let closestIdx = -1;
+                    particles.forEach((p, i) => {
+                        const d = (p.pos.x - target.x)**2 + (p.pos.z - target.z)**2;
+                        if (d < minDist) { minDist = d; closestIdx = i; }
+                    });
+                    if (closestIdx !== -1) particles[closestIdx].pinned = true;
+                });
+            }
+
+            particles.forEach(p => {
+                if(p.pinned) { p.pos.y = params.anchorHeight; p.oldPos.y = params.anchorHeight; }
+            });
+
+            // Mesh
+            const vertices = [];
+            const indices = [];
+            for(let p of particles) vertices.push(p.pos.x, p.pos.y, p.pos.z);
+
+            for(let i=0; i<params.resolution; i++) {
+                for(let j=0; j<params.resolution; j++) {
+                    const a = nodeMap[i][j];
+                    const b = nodeMap[i+1][j];
+                    const c = nodeMap[i][j+1];
+                    const d = nodeMap[i+1][j+1];
+                    if (a!==-1 && b!==-1 && c!==-1 && d!==-1) {
+                        indices.push(a, c, b); indices.push(b, c, d);
+                    }
+                }
+            }
+
+            geometry = new THREE.BufferGeometry();
+            geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+            geometry.setIndex(indices);
+            geometry.computeVertexNormals();
+
+            // MATERIAL V1 Style: Flat Shading Normal
+            const mat = new THREE.MeshNormalMaterial({ side: THREE.DoubleSide, flatShading: true });
+            mesh = new THREE.Mesh(geometry, mat);
+            scene.add(mesh);
+            
+            // Wireframe
+            const wireframe = new THREE.WireframeGeometry(geometry);
+            const wireMesh = new THREE.LineSegments(wireframe, new THREE.LineBasicMaterial({ color: 0x000000, transparent:true, opacity:0.1 }));
+            mesh.add(wireMesh);
+            
+            document.getElementById('val-shape').innerText = params.shape.toUpperCase();
+        }
+
+        // --- UPDATE ---
+        function updatePhysics() {
+            if (!params.run) return;
+            const g = params.inverted ? params.gravity : -params.gravity;
+            
+            for(let p of particles) { if(!p.pinned) p.acc.y += g; }
+
+            const iterations = 5;
+            for(let k=0; k<iterations; k++) {
+                for(let c of constraints) {
+                    const p1 = particles[c.p1];
+                    const p2 = particles[c.p2];
+                    const delta = p2.pos.clone().sub(p1.pos);
+                    const dist = delta.length();
+                    const diff = (dist - (c.restLen * params.slack)) / dist;
+                    const stiff = c.shear ? params.stiffness * 0.4 : params.stiffness;
+                    const move = delta.multiplyScalar(diff * 0.5 * stiff);
+                    if(!p1.pinned) p1.pos.add(move);
+                    if(!p2.pinned) p2.pos.sub(move);
+                }
+            }
+
+            let min=Infinity, max=-Infinity, peakX=0, peakZ=0;
+            for(let p of particles) {
+                p.integrate();
+                if(p.pos.y < min) min = p.pos.y;
+                if(p.pos.y > max) { max = p.pos.y; peakX = p.pos.x; peakZ = p.pos.z; }
+            }
+            updateDimensions(max, min, peakX, peakZ);
+
+            const posAttr = geometry.attributes.position;
+            for(let i=0; i<particles.length; i++) {
+                posAttr.setXYZ(i, particles[i].pos.x, particles[i].pos.y, particles[i].pos.z);
+            }
+            posAttr.needsUpdate = true;
+            geometry.computeVertexNormals();
+        }
+
+        // --- UI ---
+        const pane = new Tweakpane.Pane({ title: 'Block Vault Engine v8' });
+        
+        const fShape = pane.addFolder({ title: 'Geometry' });
+        fShape.addInput(params, 'shape', { 
+            options: { Square: 'Square', Rectangle: 'Rectangle', Circle: 'Circle', Hexagon: 'Hexagon' } 
+        }).on('change', initSystem);
+        
+        fShape.addInput(params, 'baseSize', { min: 10, max: 40, label: 'Base Span' }).on('change', () => { if(params.shape!=='Rectangle') initSystem(); });
+        const fRect = fShape.addFolder({ title: 'Rect Dims', expanded: false });
+        fRect.addInput(params, 'rectWidth', { min: 5, max: 40 }).on('change', () => { if(params.shape==='Rectangle') initSystem(); });
+        fRect.addInput(params, 'rectLength', { min: 5, max: 40 }).on('change', () => { if(params.shape==='Rectangle') initSystem(); });
+
+        fShape.addInput(params, 'supports', { options: { 'Corners (Arches)': 'Corners', 'Perimeter (Sealed)': 'Perimeter' } }).on('change', initSystem);
+        fShape.addInput(params, 'resolution', { min: 10, max: 50, step: 1 }).on('change', initSystem);
+        fShape.addInput(params, 'anchorHeight', { min: -10, max: 20, label: 'Anchor Z' }).on('change', () => {
+             particles.forEach(p => { if(p.pinned) { p.pos.y = params.anchorHeight; p.oldPos.y = params.anchorHeight; }});
+        });
+
+        const fPhys = pane.addFolder({ title: 'Statics' });
+        fPhys.addInput(params, 'slack', { min: 0.1, max: 2.0, label: 'Cable Tension' });
+        fPhys.addInput(params, 'shear', { label: 'Shear Bracing' }).on('change', initSystem);
+        fPhys.addInput(params, 'run');
+        
+        const btn = pane.addButton({ title: 'INVERT (COMPRESSION)' });
+        btn.on('click', () => {
+            params.inverted = !params.inverted;
+            particles.forEach(p => p.oldPos.copy(p.pos));
+            const el = document.getElementById('val-state');
+            el.innerText = params.inverted ? "COMPRESSION (VAULT)" : "HANGING (TENSION)";
+            el.style.color = params.inverted ? "#00ffff" : "#ffcc00";
+        });
+        
+        pane.addButton({ title: 'Export .DXF (SketchUp)' }).on('click', exportDXF);
+        pane.addButton({ title: 'Reset' }).on('click', initSystem);
+
+        initSystem();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            updatePhysics();
+            controls.update();
+            dimGroup.children.forEach(c => { if(c.isSprite) c.lookAt(camera.position); });
+            renderer.render(scene, camera);
+        }
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+        animate();
+    </script>
+</body>
+</html>

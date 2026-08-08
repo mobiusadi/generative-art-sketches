@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mobius | Design at the Speed of Code</title>
+    <style>
+        :root {
+            --accent: #00ffff;
+            --bg: #0a0a0a;
+            --text: #e0e0e0;
+            --card-bg: #111;
+        }
+        
+        body, html { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: 'Helvetica Neue', Arial, sans-serif; }
+        
+        a { text-decoration: none; color: inherit; }
+        
+        /* Nav */
+        .nav { position: fixed; top: 0; left: 0; width: 100%; padding: 20px; display: flex; justify-content: space-between; mix-blend-mode: difference; z-index: 1000; }
+        .logo { font-weight: bold; font-size: 24px; letter-spacing: -1px; }
+        .back-btn { border: 1px solid rgba(255,255,255,0.3); padding: 5px 15px; border-radius: 20px; font-size: 14px; transition: 0.3s; }
+        .back-btn:hover { background: #fff; color: #000; }
+
+        /* Hero */
+        .hero {
+            height: 80vh; display: flex; flex-direction: column; justify-content: center; align-items: center;
+            text-align: center; padding: 0 20px;
+        }
+        h1 { font-size: 8vw; margin: 0; line-height: 0.9; letter-spacing: -3px; background: linear-gradient(to right, #fff, #666); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .subtitle { font-size: 1.5rem; margin-top: 20px; color: #888; max-width: 600px; line-height: 1.4; }
+
+        /* The Workflow Grid */
+        .workflow {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2px; background: #222; margin-bottom: 100px;
+        }
+        
+        .step {
+            background: var(--bg); padding: 40px; height: 500px;
+            display: flex; flex-direction: column; justify-content: space-between;
+            transition: 0.3s; border: 1px solid #111;
+        }
+        .step:hover { background: #111; }
+
+        .step-num { font-family: monospace; color: var(--accent); margin-bottom: 20px; display: block; }
+        .step-title { font-size: 2rem; margin: 0 0 10px 0; }
+        .step-desc { color: #666; font-size: 0.9rem; line-height: 1.5; margin-bottom: 30px; }
+        
+        .step-visual {
+            width: 100%; height: 250px; background: #222;
+            display: flex; align-items: center; justify-content: center;
+            overflow: hidden; border-radius: 4px;
+        }
+        .step-visual img { width: 100%; height: 100%; object-fit: cover; opacity: 0.8; transition: 0.5s; }
+        .step:hover .step-visual img { opacity: 1.0; transform: scale(1.05); }
+
+        /* Quote Section */
+        .manifesto {
+            padding: 100px 20px; text-align: center; max-width: 800px; margin: 0 auto;
+        }
+        .manifesto p { font-size: 1.8rem; line-height: 1.4; color: #fff; }
+        .highlight { color: var(--accent); }
+
+        /* Footer */
+        footer { padding: 50px; text-align: center; color: #444; font-size: 12px; font-family: monospace; }
+
+    </style>
+</head>
+<body>
+
+    <nav class="nav">
+        <div class="logo">MOBIUS</div>
+        <a href="index.html" class="back-btn">Close Case Study</a>
+    </nav>
+
+    <section class="hero">
+        <h1>DESIGN AT THE<br>SPEED OF CODE</h1>
+        <div class="subtitle">
+            Traditional architecture takes weeks to iterate. We take milliseconds.
+            <br>A case study in generative verticality.
+        </div>
+    </section>
+
+    <section class="workflow">
+        <div class="step">
+            <div>
+                <span class="step-num">01 / THE ALGORITHM</span>
+                <h2 class="step-title">Mathematical<br>Foundation</h2>
+                <p class="step-desc">
+                    We don't start with a sketch. We start with logic. 
+                    Using the 17 Wallpaper Groups, we developed a custom 
+                    Zellij tiling engine to explore symmetry breaking in real-time.
+                </p>
+            </div>
+            <div class="step-visual">
+                <img src="tile-pattern.png" alt="Tiling Algorithm">
+            </div>
+        </div>
+
+        <div class="step">
+            <div>
+                <span class="step-num">02 / THE ENGINE</span>
+                <h2 class="step-title">Parametric<br>Generation</h2>
+                <p class="step-desc">
+                    We extruded the logic into 3D using a custom Three.js engine. 
+                    Wind load mitigation is handled via algorithmic twisting and tapering, 
+                    controlled by 8 parametric sliders.
+                </p>
+            </div>
+            <div class="step-visual">
+                <img src="tower-generator.png" alt="Tower Generator">
+            </div>
+        </div>
+
+        <div class="step">
+            <div>
+                <span class="step-num">03 / THE INTEROP</span>
+                <h2 class="step-title">Direct to<br>Production</h2>
+                <p class="step-desc">
+                    Code becomes CAD. Our engine exports clean, watertight DXF geometry 
+                    directly into professional BIM/CAD workflows (SketchUp, Rhino, Revit) 
+                    for immediate documentation.
+                </p>
+            </div>
+            <div class="step-visual">
+    <img src="sketchup-export.png" alt="AI Visualization">
+</div>
+
+
+        </div>
+
+        <div class="step">
+            <div>
+                <span class="step-num">04 / THE VISION</span>
+                <h2 class="step-title">Contextual<br>Realism</h2>
+                <p class="step-desc">
+                    Using advanced AI visualization, we validate the aesthetic 
+                    impact of the parametric logic in its intended urban context 
+                    seconds after generation.
+                </p>
+            </div>
+            <div class="step-visual">
+    <img src="Context-Realism-HR_web.jpg" alt="AI Visualization">
+</div>
+        </div>
+    </section>
+
+    <section class="manifesto">
+        <p>
+            "We do not sell black boxes. We build transparent engines that turn 
+            <span class="highlight">complexity into clarity</span>."
+        </p>
+    </section>
+
+    <footer>
+        MOBIUS CONSULTING &copy; 2024<br>
+        ARCHITECTURAL INTELLIGENCE
+    </footer>
+
+</body>
+</html>

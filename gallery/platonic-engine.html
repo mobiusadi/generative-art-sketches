@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Architectural Intelligence | Platonic Engine v1.1</title>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.1.0/dist/tweakpane.min.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #111; font-family: monospace; }
+        canvas { display: block; }
+        
+        #hud {
+            position: absolute; top: 20px; left: 20px; width: 280px;
+            pointer-events: none; color: #ccc;
+            background: rgba(0,0,0,0.7); padding: 15px;
+            border-left: 2px solid #ffcc00;
+        }
+        .title { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 5px; color:#888;}
+        .val { color: #fff; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div id="hud">
+        <div class="title">PLATONIC ENGINE</div>
+        <div>Structure: <span class="val">Icosahedron</span></div>
+        <div>Basis: <span class="val" style="color:#ffcc00">3 Golden Rectangles</span></div>
+    </div>
+    
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // --- SETUP ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x111111);
+        
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(4, 4, 4);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.autoRotate = true;
+        controls.autoRotateSpeed = 1.0;
+
+        // Lights
+        const ambient = new THREE.AmbientLight(0xffffff, 0.4);
+        scene.add(ambient);
+        const point = new THREE.PointLight(0xffffff, 1);
+        point.position.set(10, 10, 10);
+        scene.add(point);
+        const point2 = new THREE.PointLight(0x00aaff, 0.8);
+        point2.position.set(-10, -5, -10);
+        scene.add(point2);
+
+        // --- GEOMETRY ---
+        const PHI = (1 + Math.sqrt(5)) / 2;
+        const group = new THREE.Group();
+        scene.add(group);
+
+        const rGroup = new THREE.Group();
+        group.add(rGroup);
+
+        // Define Dimensions
+        // We use the cyclic permutation of vertices: (0, +/- 1, +/- PHI)
+        
+        // 1. CYAN (XY Plane): (+/- 1, +/- PHI, 0)
+        // Width = 2, Height = 2*PHI
+        const g1 = new THREE.PlaneGeometry(2, 2*PHI);
+        const m1 = new THREE.MeshBasicMaterial({ color: 0x00ffff, side: THREE.DoubleSide, transparent:true, opacity:0.1 });
+        const mesh1 = new THREE.Mesh(g1, m1);
+        mesh1.add(new THREE.LineSegments(new THREE.EdgesGeometry(g1), new THREE.LineBasicMaterial({color:0x00ffff})));
+        rGroup.add(mesh1);
+
+        // 2. PINK (YZ Plane): (0, +/- 1, +/- PHI)
+        // Previous error: Width was 2, Height was 2*PHI (Tall)
+        // Correction: Width needs to cover Z (+/- PHI), Height covers Y (+/- 1)
+        // So Width = 2*PHI, Height = 2
+        const g2 = new THREE.PlaneGeometry(2*PHI, 2);
+        const m2 = new THREE.MeshBasicMaterial({ color: 0xff0055, side: THREE.DoubleSide, transparent:true, opacity:0.1 });
+        const mesh2 = new THREE.Mesh(g2, m2);
+        mesh2.rotateY(Math.PI/2); // Rotates so Width lies along Z, Height lies along Y
+        mesh2.add(new THREE.LineSegments(new THREE.EdgesGeometry(g2), new THREE.LineBasicMaterial({color:0xff0055})));
+        rGroup.add(mesh2);
+
+        // 3. YELLOW (XZ Plane): (+/- PHI, 0, +/- 1)
+        // Width covers X (+/- PHI), Height covers Z (+/- 1)
+        // So Width = 2*PHI, Height = 2
+        const g3 = new THREE.PlaneGeometry(2*PHI, 2);
+        const m3 = new THREE.MeshBasicMaterial({ color: 0xffcc00, side: THREE.DoubleSide, transparent:true, opacity:0.1 });
+        const mesh3 = new THREE.Mesh(g3, m3);
+        mesh3.rotateX(Math.PI/2); // Rotates so Height lies along Z
+        mesh3.add(new THREE.LineSegments(new THREE.EdgesGeometry(g3), new THREE.LineBasicMaterial({color:0xffcc00})));
+        rGroup.add(mesh3);
+
+
+        // --- ICOSAHEDRON (The Shell) ---
+        // Radius matches distance from origin to (0, 1, PHI)
+        const icoRadius = Math.sqrt(1 + PHI*PHI);
+        const icoGeo = new THREE.IcosahedronGeometry(icoRadius, 0); 
+        
+        const icoMat = new THREE.MeshStandardMaterial({ 
+            color: 0xffffff, 
+            flatShading: true,
+            roughness: 0.2,
+            metalness: 0.8,
+            transparent: true,
+            opacity: 0.1,
+            side: THREE.DoubleSide
+        });
+        const icoMesh = new THREE.Mesh(icoGeo, icoMat);
+        
+        const icoEdges = new THREE.LineSegments(
+            new THREE.WireframeGeometry(icoGeo),
+            new THREE.LineBasicMaterial({ color: 0x888888, transparent:true, opacity:0.3 })
+        );
+        icoMesh.add(icoEdges);
+        group.add(icoMesh);
+
+        // --- NODES (Vertices) ---
+        const pos = icoGeo.attributes.position;
+        const nodeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+        const nodeGeo = new THREE.SphereGeometry(0.08);
+        
+        for(let i=0; i<pos.count; i++){
+            const v = new THREE.Vector3().fromBufferAttribute(pos, i);
+            const n = new THREE.Mesh(nodeGeo, nodeMat);
+            n.position.copy(v);
+            icoMesh.add(n);
+        }
+
+        // --- STATE ---
+        const params = {
+            rectOpacity: 0.15,
+            shellOpacity: 0.1,
+            rotate: true,
+            showRects: true,
+            showShell: true
+        };
+
+        function update() {
+            mesh1.material.opacity = params.rectOpacity;
+            mesh2.material.opacity = params.rectOpacity;
+            mesh3.material.opacity = params.rectOpacity;
+            icoMesh.material.opacity = params.shellOpacity;
+            
+            rGroup.visible = params.showRects;
+            icoMesh.visible = params.showShell;
+            
+            controls.autoRotate = params.rotate;
+        }
+
+        // --- UI ---
+        const pane = new Tweakpane.Pane({ title: 'Platonic Controls' });
+        
+        const fView = pane.addFolder({ title: 'Visibility' });
+        fView.addInput(params, 'showRects', { label: 'Golden Rects' }).on('change', update);
+        fView.addInput(params, 'rectOpacity', { min: 0, max: 1, label: 'Rect Opacity' }).on('change', update);
+        fView.addInput(params, 'showShell', { label: 'Icosahedron' }).on('change', update);
+        fView.addInput(params, 'shellOpacity', { min: 0, max: 1, label: 'Shell Opacity' }).on('change', update);
+        
+        pane.addInput(params, 'rotate').on('change', update);
+        
+        pane.addButton({ title: 'Download Image' }).on('click', () => {
+            renderer.render(scene, camera);
+            const link = document.createElement('a');
+            link.download = 'icosahedron_golden.png';
+            link.href = renderer.domElement.toDataURL();
+            link.click();
+        });
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+
+    </script>
+</body>
+</html>

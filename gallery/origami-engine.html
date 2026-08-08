@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Architectural Intelligence | Origami Engine</title>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.1.0/dist/tweakpane.min.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #111; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // --- SCENE SETUP ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x111111);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 20, 20);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap; 
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        // --- LIGHTING ---
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
+        dirLight.position.set(10, 20, 10);
+        dirLight.castShadow = true;
+        scene.add(dirLight);
+        const fillLight = new THREE.DirectionalLight(0xddeeff, 0.5);
+        fillLight.position.set(-10, 10, -10);
+        scene.add(fillLight);
+
+        // --- STATE ---
+        const params = {
+            shape: 'Yoshimura', 
+            expansion: 0.5,
+            rows: 6,
+            cols: 6,
+            paramA: 70,         
+            paperColor: '#f2f1f0',
+            lineColor: '#222222',
+            showLines: true,     // Active by default
+            opacity: 1.0
+        };
+
+        let mesh, lineSegments;
+        let geometry;
+
+        // --- MATH ENGINES ---
+        function getMiuraVertices(t, gammaVal, rows, cols) {
+            const a = 2; const b = 2;
+            const gammaRad = gammaVal * (Math.PI / 180);
+            const shearFactor = Math.cos(gammaRad); 
+            const expansion = Math.max(0.01, t);
+            const height = Math.sqrt(Math.max(0, 1 - expansion*expansion)) * a;
+
+            const vertices = [];
+            const totalW = cols * a * expansion;
+            const totalH = rows * b;
+            const xOffset = -totalW / 2;
+            const zOffset = -totalH / 2;
+
+            for (let i = 0; i <= rows; i++) {
+                for (let j = 0; j <= cols; j++) {
+                    let x = j * a * expansion;
+                    let z = i * b;
+                    if (j % 2 !== 0) z += (b * shearFactor); 
+                    const isMountain = (i + j) % 2 === 0;
+                    let y = isMountain ? height : -height;
+                    if (t >= 0.99) y = 0;
+                    vertices.push({ x: x + xOffset, y: y, z: z + zOffset });
+                }
+            }
+            return vertices;
+        }
+
+        function getYoshimuraVertices(t, curveVal, rows, cols) {
+            const w = 2; const h = 2 * t; 
+            const radius = 200 / Math.max(0.1, curveVal); 
+            const vertices = [];
+            const totalW = cols * w;
+            const xOffset = -totalW / 2;
+            
+            for (let i = 0; i <= rows; i++) {
+                for (let j = 0; j <= cols; j++) {
+                    let u = j * w + xOffset; 
+                    let v = i * h;           
+                    const depth = (1 - t) * 1.5; 
+                    let rOffset = ((i + j) % 2 === 0) ? depth : -depth;
+                    
+                    let finalX = u;
+                    let finalY = rOffset;
+                    let finalZ = v - (rows * h)/2;
+
+                    if (curveVal > 5) {
+                        const theta = u / radius;
+                        finalX = (radius + rOffset) * Math.sin(theta);
+                        finalY = (radius + rOffset) * Math.cos(theta) - radius;
+                    }
+                    vertices.push({ x: finalX, y: finalY, z: finalZ });
+                }
+            }
+            return vertices;
+        }
+
+        function getAccordionVertices(t, depthVal, rows, cols) {
+            const w = 2 * t; const h = 2;     
+            const foldDepth = (1-t) * (depthVal / 20); 
+            const vertices = [];
+            const totalW = cols * w;
+            const totalH = rows * h;
+            for (let i = 0; i <= rows; i++) {
+                for (let j = 0; j <= cols; j++) {
+                    let x = j * w - (totalW / 2);
+                    let z = i * h - (totalH / 2);
+                    let y = (j % 2 === 0) ? foldDepth : -foldDepth;
+                    if (t >= 0.99) y = 0;
+                    vertices.push({ x, y, z });
+                }
+            }
+            return vertices;
+        }
+
+        function getActiveVertices(forceFlat = false) {
+            const t = forceFlat ? 1.0 : params.expansion;
+            const rows = params.rows;
+            const cols = params.cols;
+            switch(params.shape) {
+                case 'Miura': return getMiuraVertices(t, params.paramA, rows, cols);
+                case 'Yoshimura': 
+                    const curve = forceFlat ? 0 : params.paramA;
+                    return getYoshimuraVertices(t, curve, rows, cols);
+                case 'Accordion': return getAccordionVertices(t, params.paramA, rows, cols);
+            }
+        }
+
+        function updateGeometry() {
+            if (!mesh || !geometry) return;
+            const verts = getActiveVertices(false);
+            const posAttribute = geometry.attributes.position;
+            for (let i = 0; i < verts.length; i++) {
+                posAttribute.setXYZ(i, verts[i].x, verts[i].y, verts[i].z);
+            }
+            posAttribute.needsUpdate = true;
+            geometry.computeVertexNormals();
+            
+            // Update the visual net if enabled
+            if (params.showLines) {
+                if (lineSegments) scene.remove(lineSegments);
+                createScoreLines();
+            } else if (lineSegments) {
+                scene.remove(lineSegments);
+                lineSegments = null;
+            }
+        }
+
+        function createScoreLines() {
+            // Using WireframeGeometry to show the topology on screen
+            const wiregeo = new THREE.WireframeGeometry(geometry);
+            const mat = new THREE.LineBasicMaterial({ 
+                color: params.lineColor, 
+                opacity: 0.3, 
+                transparent: true 
+            });
+            lineSegments = new THREE.LineSegments(wiregeo, mat);
+            // Slight offset to prevent z-fighting with the paper
+            lineSegments.position.y = 0.01; 
+            scene.add(lineSegments);
+        }
+
+        function initMesh() {
+            if (mesh) { scene.remove(mesh); geometry.dispose(); }
+            if (lineSegments) { scene.remove(lineSegments); lineSegments = null; }
+            
+            geometry = new THREE.PlaneGeometry(10, 10, params.cols, params.rows);
+            const material = new THREE.MeshStandardMaterial({
+                color: params.paperColor, 
+                side: THREE.DoubleSide, 
+                roughness: 0.6, 
+                metalness: 0.0,
+                polygonOffset: true, 
+                polygonOffsetFactor: 1, 
+                opacity: params.opacity, 
+                transparent: true
+            });
+            mesh = new THREE.Mesh(geometry, material);
+            mesh.castShadow = true; mesh.receiveShadow = true;
+            scene.add(mesh);
+            updateGeometry();
+        }
+
+        // --- SMART BLUEPRINT SYSTEM ---
+        function exportBlueprint() {
+            const flatVerts = getActiveVertices(true); // Force Flat
+            
+            const cvs = document.createElement('canvas');
+            const scale = 50; const padding = 100;
+            
+            let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+            flatVerts.forEach(v => {
+                if(v.x < minX) minX = v.x; if(v.x > maxX) maxX = v.x;
+                if(v.z < minZ) minZ = v.z; if(v.z > maxZ) maxZ = v.z;
+            });
+            
+            const w = (maxX - minX) * scale + (padding * 2);
+            const h = (maxZ - minZ) * scale + (padding * 2);
+            cvs.width = w; cvs.height = h;
+            const ctx = cvs.getContext('2d');
+
+            ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,w,h);
+            const mapX = (x) => (x - minX) * scale + padding;
+            const mapY = (z) => (z - minZ) * scale + padding;
+            const widthPoints = params.cols + 1;
+            
+            // DRAWING LOOP
+            for (let i = 0; i <= params.rows; i++) {
+                for (let j = 0; j <= params.cols; j++) {
+                    const idx = i * widthPoints + j;
+                    const v1 = flatVerts[idx];
+                    ctx.lineWidth = 1.5;
+
+                    // 1. Draw Grid Lines (Layout)
+                    if (j < params.cols) {
+                        const v2 = flatVerts[idx + 1];
+                        ctx.beginPath(); ctx.moveTo(mapX(v1.x), mapY(v1.z)); ctx.lineTo(mapX(v2.x), mapY(v2.z));
+                        ctx.setLineDash([2, 4]); ctx.strokeStyle = '#aaa'; ctx.stroke();
+                    }
+                    if (i < params.rows) {
+                        const v3 = flatVerts[idx + widthPoints];
+                        ctx.beginPath(); ctx.moveTo(mapX(v1.x), mapY(v1.z)); ctx.lineTo(mapX(v3.x), mapY(v3.z));
+                        ctx.setLineDash([2, 4]); ctx.strokeStyle = '#aaa'; ctx.stroke();
+                        
+                        // 2. Draw CREASE PATTERN based on SHAPE
+                        
+                        if (params.shape === 'Miura' && j < params.cols) {
+                            ctx.beginPath(); ctx.moveTo(mapX(v1.x), mapY(v1.z)); ctx.lineTo(mapX(flatVerts[idx+widthPoints].x), mapY(flatVerts[idx+widthPoints].z));
+                            ctx.setLineDash([]); ctx.strokeStyle = '#000'; ctx.stroke();
+                        }
+                        
+                        // YOSHIMURA LOGIC
+                        if (params.shape === 'Yoshimura' && j < params.cols) {
+                            const v2 = flatVerts[idx + 1];           
+                            const v3 = flatVerts[idx + widthPoints]; 
+                            const v4 = flatVerts[idx + widthPoints + 1]; 
+
+                            const isEvenRow = i % 2 === 0;
+                            const isEvenCol = j % 2 === 0;
+
+                            if (isEvenRow === isEvenCol) {
+                                ctx.beginPath(); ctx.moveTo(mapX(v3.x), mapY(v3.z)); ctx.lineTo(mapX(v2.x), mapY(v2.z));
+                                ctx.setLineDash([10, 5]); ctx.strokeStyle = '#ff0000'; ctx.stroke(); 
+                            } else {
+                                ctx.beginPath(); ctx.moveTo(mapX(v1.x), mapY(v1.z)); ctx.lineTo(mapX(v4.x), mapY(v4.z));
+                                ctx.setLineDash([10, 5]); ctx.strokeStyle = '#ff0000'; ctx.stroke(); 
+                            }
+                        }
+
+                        // ACCORDION LOGIC
+                        if (params.shape === 'Accordion') {
+                             ctx.beginPath(); ctx.moveTo(mapX(v1.x), mapY(v1.z)); ctx.lineTo(mapX(flatVerts[idx+1].x), mapY(flatVerts[idx+1].z));
+                             ctx.setLineDash([15, 3]); ctx.strokeStyle = '#00aa00'; ctx.stroke(); 
+                        }
+                    }
+                }
+            }
+            
+            // Labels
+            ctx.font = '20px monospace';
+            ctx.fillStyle = '#000';
+            ctx.fillText(`ARCHITECTURAL INTELLIGENCE | ${params.shape.toUpperCase()} NET`, 50, 50);
+            ctx.fillText(`Red = Ridge | Green = Valley`, 50, 80);
+            
+            const link = document.createElement('a');
+            link.download = `${params.shape}-net.png`;
+            link.href = cvs.toDataURL('image/png');
+            link.click();
+        }
+
+        // --- ANIMATION ---
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // --- UI ---
+        const pane = new Tweakpane.Pane({ title: 'The Origami Engine' });
+        
+        pane.addInput(params, 'shape', { 
+            options: { 'Miura-Ori': 'Miura', 'Yoshimura': 'Yoshimura', 'Accordion': 'Accordion' } 
+        }).on('change', initMesh);
+        
+        const fPhys = pane.addFolder({ title: 'Physics' });
+        fPhys.addInput(params, 'expansion', { min: 0.1, max: 1.0, label: 'Fold State' }).on('change', updateGeometry);
+        
+        const fGeo = pane.addFolder({ title: 'Geometry Parameters' });
+        fGeo.addInput(params, 'paramA', { min: 0, max: 100, label: 'Shape Factor' }).on('change', updateGeometry);
+        fGeo.addInput(params, 'rows', { min: 2, max: 20, step: 1 }).on('change', initMesh);
+        fGeo.addInput(params, 'cols', { min: 2, max: 20, step: 1 }).on('change', initMesh);
+        
+        // RESTORED VISUALS FOLDER
+        const fVis = pane.addFolder({ title: 'Visuals & Export' });
+        fVis.addInput(params, 'showLines', { label: 'Show Net' }).on('change', updateGeometry);
+        fVis.addInput(params, 'paperColor', { label: 'Paper Color' }).on('change', () => { mesh.material.color.set(params.paperColor); });
+        fVis.addInput(params, 'lineColor', { label: 'Grid Color' }).on('change', () => { if(lineSegments) lineSegments.material.color.set(params.lineColor); });
+        fVis.addInput(params, 'opacity', { min: 0.1, max: 1.0, label: 'Opacity' }).on('change', () => { mesh.material.opacity = params.opacity; });
+        
+        fVis.addSeparator();
+        fVis.addButton({ title: 'PRINT NET (.PNG)' }).on('click', exportBlueprint);
+
+        initMesh();
+        animate();
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>

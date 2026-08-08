@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Architectural Intelligence | Penrose Engine v2</title>
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.1.0/dist/tweakpane.min.js"></script>
+    <style>
+        body { margin: 0; background: #111; font-family: monospace; overflow: hidden; }
+        canvas { display: block; }
+        #hud { position: absolute; top: 20px; right: 20px; pointer-events: none; color: #888; background:rgba(0,0,0,0.8); padding:15px; border-right:2px solid #00ffff; width: 220px; text-align: right;}
+        .val { color: #fff; font-weight: bold; }
+        .legend { position: absolute; bottom: 20px; left: 20px; pointer-events: none; background: rgba(0,0,0,0.6); padding: 10px; border: 1px solid #333; color: #888; font-size: 11px; }
+    </style>
+</head>
+<body>
+    <div id="hud">
+        <div style="font-size:10px; margin-bottom:10px; letter-spacing: 1px;">POPULATION STATS</div>
+        <div>Kites (Cyan): <span id="cnt-kite" class="val">--</span></div>
+        <div>Darts (Pink): <span id="cnt-dart" class="val">--</span></div>
+        <div style="margin-top:5px; border-top:1px solid #333; padding-top:5px;">
+            Ratio (K/D): <span id="val-ratio" class="val" style="color:#ffcc00">--</span>
+        </div>
+        <div style="font-size:9px; margin-top:5px;">Target: φ (1.618...)</div>
+    </div>
+
+    <div class="legend">
+        <div style="color:#fff; margin-bottom:5px; border-bottom:1px solid #444;">GEOMETRY KEY </div>
+        <div style="display:flex; gap:20px; align-items: flex-end;">
+            <div>
+                <div style="color:#00ffff; font-weight:bold;">KITE</div>
+                Long Side: <span style="color:#fff">φ</span><br>
+                Short Side: <span style="color:#fff">1</span>
+            </div>
+            <div>
+                <div style="color:#ff0055; font-weight:bold;">DART</div>
+                Long Side: <span style="color:#fff">φ</span><br>
+                Short Side: <span style="color:#fff">1</span>
+            </div>
+        </div>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const PHI = (1 + Math.sqrt(5)) / 2;
+
+        let triangles = [];
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            reset();
+        }
+        window.addEventListener('resize', resize);
+
+        function reset() {
+            triangles = [];
+            const cx = canvas.width / 2;
+            const cy = canvas.height / 2;
+            const r = Math.min(cx, cy) * 0.9;
+            
+            // Start with a "Sun" (5 Kites / 10 Acute Triangles)
+            for (let i = 0; i < 10; i++) {
+                const a1 = (i - 1) * Math.PI / 5;
+                const a2 = (i + 1) * Math.PI / 5;
+                
+                // Center Vertex
+                const B = {x: cx, y: cy};
+                // Outer Vertices
+                const C = {x: cx + r*Math.cos((2*i+1)*Math.PI/10), y: cy + r*Math.sin((2*i+1)*Math.PI/10)};
+                const A = {x: cx + r*Math.cos((2*i-1)*Math.PI/10), y: cy + r*Math.sin((2*i-1)*Math.PI/10)};
+                
+                // Type 0 = Acute Triangle (Half-Kite)
+                triangles.push({type: 0, A: C, B: B, C: A}); 
+            }
+            draw();
+        }
+
+        function subdivide() {
+            const next = [];
+            for (let t of triangles) {
+                if (t.type === 0) {
+                    // ACUTE (Half-Kite) -> Splits into 1 Acute + 1 Obtuse
+                    // New Point P divides the long side AB by Phi
+                    // P = A + (B-A) / PHI
+                    const P = {
+                        x: t.A.x + (t.B.x - t.A.x) / PHI,
+                        y: t.A.y + (t.B.y - t.A.y) / PHI
+                    };
+                    
+                    // 1. New Acute (Type 0)
+                    next.push({ type: 0, A: t.C, B: P, C: t.B });
+                    // 2. New Obtuse (Type 1)
+                    next.push({ type: 1, A: P, B: t.C, C: t.A });
+                
+                } else {
+                    // OBTUSE (Half-Dart) -> Splits into 1 Acute
+                    // New Point Q divides side AC? 
+                    // Rule: Q = B + (A-B) / PHI
+                    const Q = {
+                        x: t.B.x + (t.A.x - t.B.x) / PHI,
+                        y: t.B.y + (t.A.y - t.B.y) / PHI
+                    };
+                    
+                    // 1. New Acute (Type 0)
+                    next.push({ type: 0, A: Q, B: t.C, C: t.B });
+                    // Note: No Obtuse child. This creates the Fibonacci asymmetry.
+                }
+            }
+            triangles = next;
+            draw();
+        }
+
+        function draw() {
+            ctx.fillStyle = '#111';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            let kCount = 0; 
+            let dCount = 0;
+
+            for (let t of triangles) {
+                ctx.beginPath();
+                ctx.moveTo(t.A.x, t.A.y);
+                ctx.lineTo(t.B.x, t.B.y);
+                ctx.lineTo(t.C.x, t.C.y);
+                ctx.closePath();
+                
+                if (t.type === 0) {
+                    ctx.fillStyle = '#00ffff'; 
+                    kCount += 0.5; // Counts as half-kite
+                } else {
+                    ctx.fillStyle = '#ff0055'; 
+                    dCount += 0.5; // Counts as half-dart
+                }
+                
+                ctx.fill();
+                
+                // Draw Outline
+                // To make them look like merged tiles, we draw the perimeter lightly
+                ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+            }
+            
+            // Draw tile borders (White for definition)
+            // Ideally we'd only draw shared edges, but simple stroke works for viz
+            
+            // HUD Update
+            const kites = Math.ceil(kCount);
+            const darts = Math.ceil(dCount);
+            
+            document.getElementById('cnt-kite').innerText = kites;
+            document.getElementById('cnt-dart').innerText = darts;
+            
+            const r = darts > 0 ? (kites/darts) : 0;
+            const elRatio = document.getElementById('val-ratio');
+            elRatio.innerText = r.toFixed(5);
+            
+            // Color code the ratio based on accuracy
+            const diff = Math.abs(r - PHI);
+            if (diff < 0.01 && darts > 0) elRatio.style.color = '#00ff00';
+            else elRatio.style.color = '#ffcc00';
+        }
+
+        // Init UI
+        const pane = new Tweakpane.Pane({title: 'Penrose Controls'});
+        pane.addButton({title: 'Subdivide (+Density)'}).on('click', subdivide);
+        pane.addButton({title: 'Reset'}).on('click', reset);
+        
+        resize();
+        reset();
+    </script>
+</body>
+</html>

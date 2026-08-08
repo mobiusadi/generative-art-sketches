@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Architectural Intelligence | Wallpaper Groups</title>
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.1.0/dist/tweakpane.min.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #111; }
+        canvas { display: block; width: 100%; height: 100%; }
+        .home-btn {
+            position: fixed; top: 20px; left: 20px;
+            color: #fff; text-decoration: none; font-family: monospace;
+            font-size: 14px; z-index: 1000; opacity: 0.8; transition: 0.3s;
+            mix-blend-mode: difference; border: 1px solid rgba(255,255,255,0.5);
+            padding: 5px 10px; background: rgba(0,0,0,0.2);
+        }
+        .home-btn:hover { opacity: 1.0; background: #fff; color: #000; }
+        
+        #info {
+            position: fixed; bottom: 20px; left: 20px;
+            color: #fff; font-family: monospace; font-size: 12px;
+            background: rgba(0,0,0,0.8); padding: 15px; border-left: 2px solid #00ffff;
+            pointer-events: none; opacity: 0; transition: opacity 0.3s; max-width: 300px;
+        }
+        #info.visible { opacity: 1; }
+    </style>
+</head>
+<body>
+
+    <a href="index.html" class="home-btn">← Home</a>
+    <div id="info"></div>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const context = canvas.getContext('2d');
+        const info = document.getElementById('info');
+
+        // Logic Definitions for the Groups
+        const GROUPS = {
+            1:  { name: 'p1', desc: 'Translation only. The tile just repeats.', type: 'square' },
+            2:  { name: 'pm', desc: 'Reflections. Columns mirror each other.', type: 'square' },
+            3:  { name: 'pg', desc: 'Glide Reflection. Rows flip and step.', type: 'square' },
+            4:  { name: 'cm', desc: 'Brick Mirror. Staggered rows with reflection.', type: 'square' },
+            5:  { name: 'p2', desc: '180° Rotations. Tiles flip up/down.', type: 'square' },
+            6:  { name: 'p4', desc: '90° Rotations. Pinwheel motion.', type: 'square' },
+            7:  { name: 'p4m', desc: 'Kaleidoscope. 90° Rotations + Mirrors.', type: 'square' },
+            8:  { name: 'p3', desc: '120° Rotations. Triangle lattice.', type: 'hex' },
+            9:  { name: 'p6', desc: '60° Rotations. Hexagonal spinning.', type: 'hex' },
+            10: { name: 'p6m', desc: 'The Full Hex Kaleidoscope.', type: 'hex' }
+        };
+
+        const params = {
+            // Main Controls
+            groupIndex: 1, 
+            showAsymmetry: true, // "Arrow" mode
+            
+            // Dimensions
+            cellSize: 80,      
+            lineWidth: 2,
+            
+            // Colors
+            bgColor: '#1a1a1a', 
+            lineColor: '#ffffff',
+            arrowColor: '#00ffff',
+            domainColor: 'rgba(255, 0, 0, 0.4)', 
+            
+            // Geometry
+            starRadius: 0.5,
+            breakSymmetry: 0.0, // NEW: The "Revealer" Slider
+        };
+
+        let width, height;
+
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+            draw();
+        }
+        window.addEventListener('resize', resize);
+
+        // --- DRAWING HELPERS ---
+        
+        // 1. The Explicit Arrow (Math View)
+        function drawArrow(ctx, size) {
+            const s = size * 0.4;
+            ctx.beginPath();
+            ctx.moveTo(-s, s);
+            ctx.lineTo(s, s);
+            ctx.lineTo(s, -s);
+            ctx.lineTo(0, -s);
+            ctx.lineTo(0, 0);
+            ctx.lineTo(-s, 0);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+            
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.arc(-s/2, s/2, 3, 0, Math.PI*2);
+            ctx.fill();
+        }
+
+        // 2. The Star Tile (Architectural View)
+        function drawStar(ctx, size, sides) {
+            const radius = size * 0.5;
+            ctx.beginPath();
+            for (let i = 0; i < sides; i++) {
+                const angle = (Math.PI * 2 * i) / sides - Math.PI/2;
+                const nextAngle = (Math.PI * 2 * (i + 1)) / sides - Math.PI/2;
+                
+                // Edge Point
+                const mx = (Math.cos(angle) * radius + Math.cos(nextAngle) * radius) / 2;
+                const my = (Math.sin(angle) * radius + Math.sin(nextAngle) * radius) / 2;
+                
+                // Star Inner Point
+                const midAngle = (angle + nextAngle) / 2;
+                
+                // --- THE MAGIC: BREAK SYMMETRY ---
+                // If i == 0 (the first arm), we make it longer based on the slider.
+                // This makes the rotation visible!
+                let currentRadius = params.starRadius;
+                if (i === 0) currentRadius += params.breakSymmetry;
+
+                const ix = Math.cos(midAngle) * (radius * currentRadius);
+                const iy = Math.sin(midAngle) * (radius * currentRadius);
+
+                if(i===0) ctx.moveTo(mx, my);
+                else ctx.lineTo(mx, my);
+                ctx.lineTo(ix, iy);
+            }
+            ctx.closePath();
+            ctx.stroke();
+        }
+
+        // --- MAIN RENDERER ---
+        function draw() {
+            const grp = GROUPS[params.groupIndex];
+            
+            info.innerHTML = `<strong>${params.groupIndex}. ${grp.name}</strong><br>${grp.desc}`;
+            info.className = 'visible';
+
+            context.fillStyle = params.bgColor;
+            context.fillRect(0, 0, width, height);
+
+            const size = params.cellSize;
+            const cols = Math.ceil(width / size) + 2;
+            const rows = Math.ceil(height / size) + 2;
+            
+            context.save();
+            context.translate(width/2, height/2);
+
+            const rangeX = Math.ceil(cols/2);
+            const rangeY = Math.ceil(rows/2);
+
+            for (let row = -rangeY; row < rangeY; row++) {
+                for (let col = -rangeX; col < rangeX; col++) {
+                    
+                    context.save();
+
+                    // --- POSITIONING ---
+                    let x, y;
+                    if (grp.type === 'hex') {
+                        const hexH = size * 0.866;
+                        x = (col * size) + (row % 2) * (size/2);
+                        y = row * hexH;
+                    } else {
+                        x = col * size;
+                        y = row * size;
+                    }
+                    context.translate(x, y);
+
+                    // --- TRANSFORMATIONS ---
+                    let isFundamental = false; 
+                    
+                    // Logic Mapper (p1 to p6m)
+                    if (params.groupIndex === 1) { if(col===0 && row===0) isFundamental = true; }
+                    if (params.groupIndex === 2) { 
+                        if (col % 2 !== 0) context.scale(-1, 1); 
+                        if(col===0 && row===0) isFundamental = true;
+                    }
+                    if (params.groupIndex === 3) {
+                        if (row % 2 !== 0) context.scale(-1, 1);
+                        if(col===0 && row===0) isFundamental = true;
+                    }
+                    if (params.groupIndex === 4) {
+                        if ((col+row)%2 !== 0) context.scale(1, -1);
+                        if(col===0 && row===0) isFundamental = true;
+                    }
+                    if (params.groupIndex === 5) {
+                        if ((col + row) % 2 !== 0) context.rotate(Math.PI);
+                        if(col===0 && row===0) isFundamental = true;
+                    }
+                    if (params.groupIndex === 6) {
+                        const angle = ((Math.abs(col)%2) + (Math.abs(row)%2)*2) * (Math.PI/2);
+                        context.rotate(angle);
+                        if(col===0 && row===0) isFundamental = true;
+                    }
+                    if (params.groupIndex === 7) {
+                         const step = (Math.abs(col)%2) + (Math.abs(row)%2)*2;
+                         context.rotate(step * Math.PI/2);
+                         if ((col+row)%2 !== 0) context.scale(-1, 1);
+                         if(col===0 && row===0) isFundamental = true;
+                    }
+                    if (params.groupIndex >= 8 && grp.type === 'hex') {
+                         const step = (Math.abs(col+row) % 6);
+                         context.rotate(step * (Math.PI / 3));
+                         if(col===0 && row===0) isFundamental = true;
+                    }
+
+                    // --- DRAWING ---
+                    if (params.showAsymmetry) {
+                        context.fillStyle = isFundamental ? params.domainColor : params.arrowColor;
+                        context.strokeStyle = params.lineColor;
+                        context.lineWidth = params.lineWidth;
+                        drawArrow(context, size);
+                    } else {
+                        context.strokeStyle = params.lineColor;
+                        context.lineWidth = params.lineWidth;
+                        const sides = grp.type === 'hex' ? 6 : 4;
+                        drawStar(context, size, sides);
+                    }
+
+                    context.restore();
+                }
+            }
+            context.restore();
+        }
+
+        // --- CONTROLS ---
+        const pane = new Tweakpane.Pane({ title: 'Symmetry Lab' });
+        
+        const f1 = pane.addFolder({ title: 'Theory' });
+        f1.addInput(params, 'groupIndex', { min: 1, max: 10, step: 1, label: 'Select Group' }).on('change', draw);
+        f1.addInput(params, 'showAsymmetry', { label: 'Show Math (L)' }).on('change', draw);
+        
+        const f2 = pane.addFolder({ title: 'Architecture' });
+        f2.addInput(params, 'breakSymmetry', { min: 0, max: 1.0, label: 'Reveal Rotation' }).on('change', draw); // NEW
+        f2.addInput(params, 'cellSize', { min: 40, max: 150 }).on('change', draw);
+        f2.addInput(params, 'starRadius', { min: 0, max: 1.5 }).on('change', draw);
+        
+        const f3 = pane.addFolder({ title: 'Style' });
+        f3.addInput(params, 'bgColor').on('change', draw);
+        f3.addInput(params, 'lineColor').on('change', draw);
+        f3.addInput(params, 'arrowColor').on('change', draw);
+        f3.addInput(params, 'domainColor', { label: 'Source Tile' }).on('change', draw);
+
+        resize();
+
+    </script>
+</body>
+</html>

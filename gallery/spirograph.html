@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Architectural Intelligence | Spirograph Engine</title>
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.1.0/dist/tweakpane.min.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #111; font-family: monospace; }
+        canvas { display: block; }
+        
+        #hud {
+            position: absolute;
+            top: 20px; left: 20px;
+            width: 240px;
+            pointer-events: none;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 12px;
+            background: rgba(0,0,0,0.6);
+            padding: 15px;
+            border: 1px solid #333;
+            border-radius: 4px;
+        }
+        .val { color: #fff; font-weight: bold; }
+        .header { border-bottom: 1px solid #444; padding-bottom: 5px; margin-bottom: 10px; color: #fff; font-weight: bold;}
+    </style>
+</head>
+<body>
+    <div id="hud">
+        <div class="header">SPIROGRAPH ENGINE</div>
+        <div>MODE: <span id="val-mode" class="val" style="color:#00ffff">--</span></div>
+        <div>RATIO (k=R/r): <span id="val-k" class="val">--</span></div>
+        <br>
+        <div style="color:#888">GEOMETRY:</div>
+        <div>Stator (R): <span id="val-R" class="val">--</span></div>
+        <div>Rotor (r): <span id="val-r" class="val">--</span></div>
+        <div>Pen (d): <span id="val-d" class="val">--</span></div>
+    </div>
+    <canvas id="canvas"></canvas>
+
+    <script type="module">
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        const params = {
+            // Geometry
+            mode: 'Inside (Hypo)', // or 'Outside (Epi)'
+            R: 200,         // Stator Radius
+            r: 52,          // Rotor Radius
+            d: 80,          // Pen Offset
+            
+            // Simulation
+            speed: 2.0,
+            resolution: 5000, // Trail length
+            
+            // Visuals
+            color: '#ff0055',
+            showMech: true,
+            lineWidth: 2
+        };
+
+        let width, height;
+        let theta = 0;
+        let trace = [];
+
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+            // Don't clear trace on resize for persistence
+        }
+        window.addEventListener('resize', resize);
+
+        function getPoint(t) {
+            // R = Stator, r = Rotor, d = Pen
+            const R = params.R;
+            const r = params.r;
+            const d = params.d;
+            let x, y, gearCx, gearCy, gearAngle;
+
+            if (params.mode === 'Inside (Hypo)') {
+                // Hypotrochoid
+                // Center of rolling circle
+                gearCx = (R - r) * Math.cos(t);
+                gearCy = (R - r) * Math.sin(t);
+                
+                // Rotation of rolling circle relative to center
+                // Note the minus sign: it rolls opposite to orbit
+                gearAngle = -t * ((R - r) / r);
+                
+                x = gearCx + d * Math.cos(gearAngle + t);
+                y = gearCy + d * Math.sin(gearAngle + t); // +t usually for frame ref
+                
+                // Standard Parametric Form:
+                // x = (R-r)cos(t) + d*cos( ((R-r)/r)*t )
+                // y = (R-r)sin(t) - d*sin( ((R-r)/r)*t )
+                
+                // Let's implement the standard form strictly for export accuracy
+                x = (R - r) * Math.cos(t) + d * Math.cos( ((R - r) / r) * t );
+                y = (R - r) * Math.sin(t) - d * Math.sin( ((R - r) / r) * t );
+
+                return { x, y, gearCx, gearCy, gearAngle };
+
+            } else {
+                // Epitrochoid (Outside)
+                // x = (R+r)cos(t) - d*cos( ((R+r)/r)*t )
+                // y = (R+r)sin(t) - d*sin( ((R+r)/r)*t )
+                
+                x = (R + r) * Math.cos(t) - d * Math.cos( ((R + r) / r) * t );
+                y = (R + r) * Math.sin(t) - d * Math.sin( ((R + r) / r) * t );
+                
+                gearCx = (R + r) * Math.cos(t);
+                gearCy = (R + r) * Math.sin(t);
+                
+                return { x, y, gearCx, gearCy };
+            }
+        }
+
+        function draw() {
+            ctx.fillStyle = '#111';
+            ctx.fillRect(0, 0, width, height);
+
+            const cx = width / 2;
+            const cy = height / 2;
+            
+            // HUD
+            document.getElementById('val-mode').innerText = params.mode.split(' ')[0];
+            document.getElementById('val-k').innerText = (params.R / params.r).toFixed(3);
+            document.getElementById('val-R').innerText = params.R.toFixed(0);
+            document.getElementById('val-r').innerText = params.r.toFixed(0);
+            document.getElementById('val-d').innerText = params.d.toFixed(0);
+
+            // Physics Update
+            theta += 0.01 * params.speed;
+            
+            // Calculate Current State
+            const state = getPoint(theta);
+            trace.push({ x: state.x, y: state.y });
+
+            // Manage Trace Memory
+            if (trace.length > params.resolution) {
+                trace.shift();
+            }
+
+            ctx.translate(cx, cy);
+
+            // 1. Draw Stator (The Fixed Ring)
+            if (params.showMech) {
+                ctx.strokeStyle = '#333';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(0, 0, params.R, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+
+            // 2. Draw Trace
+            if (trace.length > 1) {
+                ctx.strokeStyle = params.color;
+                ctx.lineWidth = params.lineWidth;
+                ctx.lineJoin = 'round';
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = params.color;
+                
+                ctx.beginPath();
+                ctx.moveTo(trace[0].x, trace[0].y);
+                for (let i = 1; i < trace.length; i++) {
+                    ctx.lineTo(trace[i].x, trace[i].y);
+                }
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+            }
+
+            // 3. Draw Rotor & Arm (The Mechanism)
+            if (params.showMech) {
+                // Gear
+                ctx.strokeStyle = '#555';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.arc(state.gearCx, state.gearCy, params.r, 0, Math.PI*2);
+                ctx.stroke();
+
+                // Arm (Center to Pen)
+                ctx.strokeStyle = '#888';
+                ctx.beginPath();
+                ctx.moveTo(state.gearCx, state.gearCy);
+                ctx.lineTo(state.x, state.y);
+                ctx.stroke();
+
+                // Pen Tip
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(state.x, state.y, 4, 0, Math.PI*2);
+                ctx.fill();
+            }
+
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            requestAnimationFrame(draw);
+        }
+
+        // --- EXPORT ---
+        // Helper to find greatest common divisor
+        function gcd(a, b) { return b === 0 ? a : gcd(b, a % b); }
+        
+        function getCycleCount() {
+            // To close the loop perfecty, we need to know how many rotations around the center 
+            // are required. This depends on the ratio R/r reduced to simplest form.
+            // loops = r / gcd(R, r)
+            // e.g. R=100, r=60 -> 100/60 = 5/3. We need 3 rotations of the rotor? 
+            // Actually theta needs to go up to 2 * PI * (r / gcd(R,r)) * (something)?
+            // The period is 2 * PI * LCM(R, r) / R ?
+            // Let's brute force a "Safe High Number" or calc precisely:
+            
+            // Cycles of theta needed = (r / GCD(R,r)) * 2 PI? 
+            // Actually simpler: Period T = 2 * PI * r / GCD(R,r) * (something).
+            // Usually maxTheta = 2 * PI * (r / gcd(R,r)) * 10 is safe enough for visual.
+            // Let's use 100 * PI to be safe for export.
+            return 100 * Math.PI; 
+        }
+
+        function exportSVG() {
+            const maxT = getCycleCount();
+            const res = 0.05; 
+            let dPath = "";
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            
+            // Capture full shape
+            let firstPt = null;
+            for (let t = 0; t <= maxT; t += res) {
+                const p = getPoint(t);
+                // Simple check to stop if we close the loop? 
+                // Hard to detect perfect closure numerically. We rely on the large maxT.
+                
+                if (t===0) {
+                    firstPt = p;
+                    dPath += `M ${p.x.toFixed(3)} ${p.y.toFixed(3)} `;
+                } else {
+                    dPath += `L ${p.x.toFixed(3)} ${p.y.toFixed(3)} `;
+                }
+                
+                minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
+                maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y);
+            }
+            dPath += "Z"; // Force close
+
+            const w = (maxX - minX) + 40;
+            const h = (maxY - minY) + 40;
+            const vbX = minX - 20;
+            const vbY = minY - 20;
+
+            const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vbX} ${vbY} ${w} ${h}"><path d="${dPath}" fill="none" stroke="black" stroke-width="1" /></svg>`;
+            
+            download(svg, `spiro_${params.mode.split(' ')[0]}_R${params.R}_r${params.r}.svg`, 'image/svg+xml');
+        }
+
+        function exportDXF() {
+            const maxT = getCycleCount();
+            const res = 0.05;
+            
+            let dxf = "0\nSECTION\n2\nENTITIES\n";
+            dxf += "0\nPOLYLINE\n8\n0\n66\n1\n70\n1\n"; // 70=1 Closed
+
+            for (let t = 0; t <= maxT; t += res) {
+                const p = getPoint(t);
+                dxf += `0\nVERTEX\n8\n0\n10\n${p.x.toFixed(4)}\n20\n${p.y.toFixed(4)}\n30\n0.0\n`;
+            }
+            dxf += "0\nSEQEND\n0\nENDSEC\n0\nEOF\n";
+            
+            download(dxf, `spiro_${params.mode.split(' ')[0]}_R${params.R}_r${params.r}.dxf`, 'application/dxf');
+        }
+
+        function download(content, name, type) {
+            const blob = new Blob([content], {type: type});
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = name;
+            link.click();
+        }
+
+        // --- UI ---
+        const pane = new Tweakpane.Pane({ title: 'Spirograph Engine' });
+        
+        const fGeo = pane.addFolder({ title: 'Mechanism' });
+        fGeo.addInput(params, 'mode', { 
+            options: { 'Inside (Hypo)': 'Inside (Hypo)', 'Outside (Epi)': 'Outside (Epi)' } 
+        }).on('change', () => { trace = []; });
+        
+        fGeo.addInput(params, 'R', { min: 50, max: 300, step: 1, label: 'Stator (R)' }).on('change', () => trace = []);
+        fGeo.addInput(params, 'r', { min: 10, max: 200, step: 1, label: 'Rotor (r)' }).on('change', () => trace = []);
+        fGeo.addInput(params, 'd', { min: 0, max: 300, step: 1, label: 'Pen Dist (d)' }).on('change', () => trace = []);
+
+        const fSim = pane.addFolder({ title: 'Simulation' });
+        fSim.addInput(params, 'speed', { min: 0, max: 10 });
+        fSim.addInput(params, 'resolution', { min: 100, max: 10000, step: 100, label: 'Trail Len' });
+
+        const fVis = pane.addFolder({ title: 'Visuals' });
+        fVis.addInput(params, 'color', { label: 'Ink Color' });
+        fVis.addInput(params, 'showMech', { label: 'Show Gears' });
+        
+        const fFab = pane.addFolder({ title: 'Fabrication' });
+        fFab.addButton({ title: 'Clear Trace' }).on('click', () => trace = []);
+        fFab.addButton({ title: 'Export SVG' }).on('click', exportSVG);
+        fFab.addButton({ title: 'Export DXF' }).on('click', exportDXF);
+
+        resize();
+        draw();
+
+    </script>
+</body>
+</html>

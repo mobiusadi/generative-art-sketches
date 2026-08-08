@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Architectural Intelligence | Hyperbolic Engine</title>
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.1.0/dist/tweakpane.min.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #111; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <script type="module">
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        const params = {
+            // Playback
+            paused: false,
+            speed: 0.5,
+            parameter: 0.0,     // The "Hyperbolic Angle" (t)
+            
+            // Visuals
+            scale: 60,          // Visual zoom
+            
+            // Toggles
+            showCosh: true,
+            showSinh: true,
+            showTanh: true,
+            showAsymptotes: true,
+            showConstruction: true // The Foci Logic
+        };
+
+        let width, height;
+        let t = 0; 
+        let direction = 1; 
+        let trail = [];
+
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+        }
+        window.addEventListener('resize', resize);
+
+        function draw() {
+            ctx.fillStyle = '#111';
+            ctx.fillRect(0, 0, width, height);
+
+            const cx = width * 0.25; // Center of Unit Hyperbola
+            const cy = height / 2;
+            const graphX = width * 0.5; // Start of graph
+            
+            // --- PHYSICS ---
+            if (!params.paused) {
+                t += params.speed * 0.02 * direction;
+                if (t > 2.3 || t < -2.3) direction *= -1;
+                params.parameter = t; 
+            } else {
+                t = params.parameter;
+            }
+
+            // Calculate Values
+            const sinhVal = Math.sinh(t);
+            const coshVal = Math.cosh(t);
+            const tanhVal = Math.tanh(t);
+
+            // Point Position
+            const px = cx + coshVal * params.scale;
+            const py = cy - sinhVal * params.scale; // Invert Y
+
+            // Update Trail
+            if (!params.paused) {
+                trail.unshift({ sinh: sinhVal, cosh: coshVal, tanh: tanhVal });
+                if (trail.length > (width - graphX)) {
+                    trail.pop();
+                }
+            }
+
+            // --- DRAWING: The Unit Hyperbola ---
+
+            // 1. Asymptotes
+            if (params.showAsymptotes) {
+                ctx.strokeStyle = '#333';
+                ctx.setLineDash([5, 5]);
+                ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.moveTo(cx - 300, cy + 300); ctx.lineTo(cx + 300, cy - 300); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(cx - 300, cy - 300); ctx.lineTo(cx + 300, cy + 300); ctx.stroke();
+                ctx.setLineDash([]);
+            }
+
+            // 2. The Hyperbola Curve
+            ctx.strokeStyle = '#666';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            for (let i = -2.5; i <= 2.5; i += 0.1) {
+                const hx = cx + Math.cosh(i) * params.scale;
+                const hy = cy - Math.sinh(i) * params.scale;
+                if (i === -2.5) ctx.moveTo(hx, hy);
+                else ctx.lineTo(hx, hy);
+            }
+            ctx.stroke();
+
+            // 3. Axes
+            ctx.strokeStyle = '#444';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(cx - 100, cy); ctx.lineTo(cx + 300, cy); // X
+            ctx.moveTo(cx, cy - 300); ctx.lineTo(cx, cy + 300); // Y
+            ctx.stroke();
+
+            // 4. GEOMETRIC CONSTRUCTION (Foci)
+            if (params.showConstruction) {
+                // Focus distance c = sqrt(a^2 + b^2). For unit hyperbola, c = sqrt(2)
+                const c = Math.sqrt(2);
+                const f1x = cx + c * params.scale;
+                const f2x = cx - c * params.scale; // Mirror focus
+                
+                // Draw Foci
+                ctx.fillStyle = '#ffcc00';
+                ctx.beginPath(); ctx.arc(f1x, cy, 4, 0, Math.PI*2); ctx.fill();
+                ctx.fillText("F1", f1x - 10, cy + 20);
+                
+                ctx.beginPath(); ctx.arc(f2x, cy, 4, 0, Math.PI*2); ctx.fill();
+                ctx.fillText("F2", f2x - 10, cy + 20);
+
+                // Draw Dashed "Strings"
+                ctx.strokeStyle = '#ffcc00';
+                ctx.setLineDash([3, 3]);
+                ctx.lineWidth = 1;
+                ctx.globalAlpha = 0.6;
+                
+                // P to F1
+                ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(f1x, cy); ctx.stroke();
+                // P to F2
+                ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(f2x, cy); ctx.stroke();
+                
+                ctx.globalAlpha = 1.0;
+                ctx.setLineDash([]);
+            }
+
+            // 5. The Active Point
+            ctx.fillStyle = '#fff';
+            ctx.beginPath(); ctx.arc(px, py, 5, 0, Math.PI*2); ctx.fill();
+
+            // --- COMPONENTS ---
+            if (params.showCosh) {
+                ctx.strokeStyle = '#0088ff'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(px, cy); ctx.stroke();
+                ctx.setLineDash([2, 2]); ctx.beginPath(); ctx.moveTo(px, cy); ctx.lineTo(px, py); ctx.stroke(); ctx.setLineDash([]);
+            }
+            if (params.showSinh) {
+                ctx.strokeStyle = '#ff0055'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(px, cy); ctx.lineTo(px, py); ctx.stroke();
+            }
+            if (params.showTanh) {
+                const tanX = cx + params.scale;
+                const tanY = cy - tanhVal * params.scale;
+                ctx.strokeStyle = '#333'; ctx.beginPath(); ctx.moveTo(tanX, cy - 200); ctx.lineTo(tanX, cy + 200); ctx.stroke();
+                ctx.strokeStyle = '#00ff88'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(tanX, cy); ctx.lineTo(tanX, tanY); ctx.stroke();
+                ctx.strokeStyle = '#00ff88'; ctx.globalAlpha = 0.3; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(px, py); ctx.stroke(); ctx.globalAlpha = 1.0;
+            }
+
+            // --- THE GRAPH ---
+            const plotTrace = (key, color, label, yOffset) => {
+                ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
+                for (let i = 0; i < trail.length; i++) {
+                    const val = trail[i][key];
+                    const x = graphX + i;
+                    const y = cy - val * params.scale;
+                    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+                const currentVal = (trail.length > 0) ? trail[0][key] : (key==='sinh'?sinhVal:key==='cosh'?coshVal:tanhVal);
+                ctx.fillStyle = color;
+                ctx.fillText(label, graphX + 10, cy - currentVal * params.scale + yOffset);
+                ctx.beginPath(); ctx.arc(graphX, cy - currentVal * params.scale, 3, 0, Math.PI*2); ctx.fill();
+            };
+            ctx.strokeStyle = '#444'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(graphX, cy); ctx.lineTo(width, cy); ctx.stroke();
+
+            if (params.showCosh) plotTrace('cosh', '#0088ff', 'COSH', -15);
+            if (params.showSinh) plotTrace('sinh', '#ff0055', 'SINH', 5);
+            if (params.showTanh) plotTrace('tanh', '#00ff88', 'TANH', 25);
+
+            // --- EQUATION HUD ---
+            ctx.textAlign = 'center';
+            ctx.fillStyle = '#888';
+            ctx.font = '16px monospace';
+            
+            // Cartesian
+            ctx.fillText("x² - y² = 1", cx, cy + 250);
+            
+            // Geometric
+            if (params.showConstruction) {
+                ctx.fillStyle = '#ffcc00';
+                ctx.fillText("| d(P,F1) - d(P,F2) | = Constant", cx, cy + 280);
+            }
+
+            ctx.textAlign = 'left'; // Reset
+
+            requestAnimationFrame(draw);
+        }
+
+        // --- UI ---
+        const pane = new Tweakpane.Pane({ title: 'Hyperbolic Engine' });
+        
+        const fPlay = pane.addFolder({ title: 'Playback' });
+        fPlay.addInput(params, 'paused', { label: 'Pause' });
+        fPlay.addInput(params, 'speed', { min: 0, max: 2.0 });
+        fPlay.addInput(params, 'parameter', { min: -2.3, max: 2.3, label: 'Value (t)' }).on('change', (ev) => { if (params.paused) t = ev.value; });
+
+        const fVis = pane.addFolder({ title: 'Visuals' });
+        fVis.addInput(params, 'scale', { min: 20, max: 100, label: 'Zoom' });
+        fVis.addInput(params, 'showAsymptotes', { label: 'Asymptotes' });
+        fVis.addInput(params, 'showConstruction', { label: 'Foci (Yellow)' });
+        
+        const fFunc = pane.addFolder({ title: 'Functions' });
+        fFunc.addInput(params, 'showCosh', { label: 'Cosh (Blue)' });
+        fFunc.addInput(params, 'showSinh', { label: 'Sinh (Red)' });
+        fFunc.addInput(params, 'showTanh', { label: 'Tanh (Grn)' });
+        
+        const fAct = pane.addFolder({ title: 'Actions' });
+        fAct.addButton({ title: 'Save Image' }).on('click', () => {
+             const link = document.createElement('a');
+             link.download = 'hyperbolic_construct.png';
+             link.href = canvas.toDataURL();
+             link.click();
+        });
+
+        resize();
+        draw();
+    </script>
+</body>
+</html>

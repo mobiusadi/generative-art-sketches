@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Architectural Intelligence | Chaos Game v2</title>
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.1.0/dist/tweakpane.min.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
+        canvas { display: block; }
+        #progress {
+            position: absolute; bottom: 20px; left: 20px; 
+            font-family: monospace; color: #888; pointer-events: none;
+            background: rgba(0,0,0,0.5); padding: 5px 10px; border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="progress">Points: 0</div>
+
+    <script type="module">
+        import colormapPkg from 'https://esm.sh/colormap@2.3.2';
+        const createColormap = colormapPkg.default || colormapPkg;
+
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const progressDiv = document.getElementById('progress');
+
+        // --- CONFIGURATION ---
+        const params = {
+            // Geometry
+            sides: 4,           
+            ratio: 0.5,         
+            rule: 'no-repeat',       
+
+            // Simulation
+            speed: 2000,        
+            limit: 100000,      // "Recursion Depth" approx equivalent
+            pointSize: 1,
+            
+            // Appearance
+            backgroundColor: '#111111',
+            colorMode: 'Gradient', // Gradient vs Monochrome
+            palette: 'viridis',
+            
+            // Monochrome Settings
+            inkColor: '#00ffff',
+            tintMode: 'Solid', // Solid (100%) vs Varying (10-100%)
+            baseOpacity: 0.8   // For Gradient mode
+        };
+
+        let width, height, radius;
+        let vertices = [];
+        let currentPoint = { x: 0, y: 0 };
+        let lastVertexIndex = -1;
+        let colorLUT = [];
+        let animationId;
+        let pointCount = 0;
+        
+        const PALETTE_RES = 20; 
+
+        // --- GEOMETRY ---
+        function initGeometry() {
+            vertices = [];
+            const angleStep = (Math.PI * 2) / params.sides;
+            const rotation = -Math.PI / 2;
+
+            radius = Math.min(width, height) * 0.45;
+
+            for (let i = 0; i < params.sides; i++) {
+                const theta = i * angleStep + rotation;
+                vertices.push({
+                    x: width / 2 + Math.cos(theta) * radius,
+                    y: height / 2 + Math.sin(theta) * radius
+                });
+            }
+
+            // Reset
+            currentPoint = { x: width / 2, y: height / 2 };
+            lastVertexIndex = -1;
+            pointCount = 0;
+
+            // Clear Screen with Background Color
+            ctx.fillStyle = params.backgroundColor;
+            ctx.fillRect(0, 0, width, height);
+            
+            updatePalette();
+        }
+
+        // --- COLOR PALETTE ---
+        function updatePalette() {
+            if (params.colorMode === 'Gradient') {
+                const colors = createColormap({
+                    colormap: params.palette,
+                    nshades: PALETTE_RES,
+                    format: 'rgba',
+                    alpha: params.baseOpacity
+                });
+                colorLUT = colors;
+            }
+        }
+        
+        function hexToRgb(hex) {
+            const shorthandRegex = /^#?([a-f\d])([a-f\d])([a-f\d])$/i;
+            hex = hex.replace(shorthandRegex, (m, r, g, b) => r + r + g + g + b + b);
+            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? [
+                parseInt(result[1], 16),
+                parseInt(result[2], 16),
+                parseInt(result[3], 16)
+            ] : [255, 255, 255];
+        }
+
+        // --- MAIN ALGORITHM ---
+        function draw() {
+            // Check if "finished"
+            if (params.limit > 0 && pointCount >= params.limit) {
+                progressDiv.innerText = `FINISHED | Points: ${pointCount.toLocaleString()}`;
+                progressDiv.style.color = '#00ff00';
+                return; // Stop animation
+            }
+
+            for (let k = 0; k < params.speed; k++) {
+                
+                // 1. Pick Vertex
+                let nextVertexIndex = Math.floor(Math.random() * params.sides);
+
+                // Rules
+                if (params.rule === 'no-repeat') {
+                    while (nextVertexIndex === lastVertexIndex) {
+                        nextVertexIndex = Math.floor(Math.random() * params.sides);
+                    }
+                } else if (params.rule === 'no-opposite') {
+                    const opposite = (lastVertexIndex + params.sides / 2) % params.sides;
+                    if (lastVertexIndex !== -1 && params.sides % 2 === 0) {
+                        while (nextVertexIndex === opposite) {
+                            nextVertexIndex = Math.floor(Math.random() * params.sides);
+                        }
+                    }
+                }
+
+                const target = vertices[nextVertexIndex];
+
+                // 2. Move
+                currentPoint.x = currentPoint.x + (target.x - currentPoint.x) * params.ratio;
+                currentPoint.y = currentPoint.y + (target.y - currentPoint.y) * params.ratio;
+
+                // 3. Color Logic
+                if (params.colorMode === 'Gradient') {
+                    const colorIndex = Math.floor((nextVertexIndex / params.sides) * (PALETTE_RES - 1));
+                    const [r, g, b] = colorLUT[colorIndex];
+                    ctx.fillStyle = `rgba(${r},${g},${b}, ${params.baseOpacity})`;
+                } else {
+                    // Monochrome Mode
+                    const [r, g, b] = hexToRgb(params.inkColor);
+                    
+                    if (params.tintMode === 'Solid') {
+                        ctx.fillStyle = `rgba(${r},${g},${b}, 1.0)`;
+                    } else {
+                        // Vary tint based on vertex index (10% to 100%)
+                        // Map 0..sides to 0.1..1.0
+                        const alpha = 0.1 + (0.9 * (nextVertexIndex / (params.sides - 1)));
+                        ctx.fillStyle = `rgba(${r},${g},${b}, ${alpha})`;
+                    }
+                }
+
+                ctx.fillRect(currentPoint.x, currentPoint.y, params.pointSize, params.pointSize);
+
+                lastVertexIndex = nextVertexIndex;
+                pointCount++;
+            }
+            
+            progressDiv.innerText = `Computing... ${Math.floor((pointCount/params.limit)*100)}% (${pointCount.toLocaleString()})`;
+            progressDiv.style.color = '#888';
+
+            animationId = requestAnimationFrame(draw);
+        }
+        
+        function downloadImage() {
+            const link = document.createElement('a');
+            link.download = `chaos_game_${pointCount}_pts.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        }
+
+        function restart() {
+            if(animationId) cancelAnimationFrame(animationId);
+            initGeometry(); // Clears screen
+            draw();
+        }
+
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+            restart();
+        }
+        window.addEventListener('resize', resize);
+
+        // --- UI ---
+        const pane = new Tweakpane.Pane({ title: 'Chaos Game v2' });
+
+        // GEOMETRY
+        const fGeo = pane.addFolder({ title: 'Shape Logic' });
+        fGeo.addInput(params, 'sides', { min: 3, max: 8, step: 1, label: 'Vertices' }).on('change', restart);
+        fGeo.addInput(params, 'ratio', { min: 0.1, max: 0.9, label: 'Compression' }).on('change', restart);
+        fGeo.addInput(params, 'rule', {
+            options: { 'None': 'none', 'No Repeats': 'no-repeat', 'No Opposites': 'no-opposite' }
+        }).on('change', restart);
+
+        // SIMULATION
+        const fSim = pane.addFolder({ title: 'Simulation' });
+        fSim.addInput(params, 'limit', { min: 10000, max: 1000000, step: 10000, label: 'Auto-Stop' }).on('change', restart);
+        fSim.addInput(params, 'speed', { min: 100, max: 10000, label: 'Speed' });
+
+        // COLORS
+        const fCol = pane.addFolder({ title: 'Appearance' });
+        fCol.addInput(params, 'backgroundColor', { label: 'Background' }).on('change', restart);
+        fCol.addInput(params, 'colorMode', { options: { Gradient: 'Gradient', Monochrome: 'Monochrome' } }).on('change', () => { pane.refresh(); restart(); });
+        
+        // Gradient Settings
+        const fGrad = fCol.addFolder({ title: 'Gradient', expanded: true });
+        fGrad.addInput(params, 'palette', { 
+            options: { Viridis: 'viridis', Magma: 'magma', Inferno: 'inferno', Jet: 'jet' }
+        }).on('change', () => { updatePalette(); restart(); });
+        fGrad.addInput(params, 'baseOpacity', { min: 0.1, max: 1.0, label: 'Opacity' });
+
+        // Monochrome Settings
+        const fMono = fCol.addFolder({ title: 'Monochrome', expanded: true });
+        fMono.addInput(params, 'inkColor', { label: 'Ink Color' }).on('change', restart);
+        fMono.addInput(params, 'tintMode', { 
+            options: { 'Solid (100%)': 'Solid', 'Varying (10-100%)': 'Varying' } 
+        }).on('change', restart);
+
+        const fActions = pane.addFolder({ title: 'Actions' });
+        fActions.addButton({ title: 'Restart' }).on('click', restart);
+        fActions.addButton({ title: 'Download Image' }).on('click', downloadImage);
+
+        // Init
+        resize();
+
+    </script>
+</body>
+</html>

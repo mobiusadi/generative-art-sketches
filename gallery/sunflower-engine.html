@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Architectural Intelligence | Phyllotaxis Engine</title>
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.1.0/dist/tweakpane.min.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #111; font-family: monospace; }
+        canvas { display: block; }
+        
+        #hud {
+            position: absolute;
+            top: 20px; left: 20px;
+            pointer-events: none;
+            color: #ccc;
+            background: rgba(0,0,0,0.6);
+            padding: 15px;
+            border-left: 2px solid #ffcc00;
+            width: 280px;
+        }
+        .val { color: #fff; font-weight: bold; }
+        .highlight { color: #ffcc00; }
+    </style>
+</head>
+<body>
+    <div id="hud">
+        <div style="font-size:10px; letter-spacing:2px; margin-bottom:5px;">PHYLLOTAXIS ENGINE</div>
+        <div>ANGLE: <span id="val-angle" class="val">--</span></div>
+        <div>SEEDS: <span id="val-count" class="val">--</span></div>
+        <br>
+        <div style="font-size:11px; color:#888;">
+            *Nature uses 137.5° (The Golden Angle) to maximize packing efficiency.
+        </div>
+    </div>
+    <canvas id="canvas"></canvas>
+
+    <script type="module">
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        const GOLDEN_ANGLE = 137.50776405; // 360 * (1 - 1/phi)
+
+        const params = {
+            angle: 137.5,   // Degrees
+            count: 800,     // Number of seeds
+            spread: 8,      // Scale factor (c)
+            size: 4,        // Seed radius
+            animSpeed: 5,   // Seeds per frame
+            autoGrow: true,
+            colorMode: 'Radial' // Radial or Index
+        };
+
+        let width, height;
+        let currentCount = 0;
+
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+        }
+        window.addEventListener('resize', resize);
+
+        function draw() {
+            // Update Growth
+            if (params.autoGrow) {
+                currentCount += params.animSpeed;
+                if(currentCount > params.count) currentCount = params.count;
+            } else {
+                currentCount = params.count;
+            }
+
+            // HUD
+            document.getElementById('val-angle').innerText = params.angle.toFixed(2) + "°";
+            document.getElementById('val-count').innerText = Math.floor(currentCount);
+            
+            // Check for "Golden" state to highlight HUD
+            const isGolden = Math.abs(params.angle - GOLDEN_ANGLE) < 0.1;
+            document.getElementById('val-angle').style.color = isGolden ? '#ffcc00' : '#fff';
+
+            // Clear
+            ctx.fillStyle = '#111';
+            ctx.fillRect(0, 0, width, height);
+
+            ctx.save();
+            ctx.translate(width / 2, height / 2);
+
+            // PHYLLOTAXIS FORMULA
+            // r = c * sqrt(n)
+            // theta = n * angle
+            
+            const toRad = Math.PI / 180;
+
+            for (let n = 0; n < currentCount; n++) {
+                const r = params.spread * Math.sqrt(n);
+                const theta = n * params.angle * toRad;
+                
+                const x = r * Math.cos(theta);
+                const y = r * Math.sin(theta);
+
+                // Color Logic
+                let hue;
+                if (params.colorMode === 'Radial') {
+                    // Color based on distance from center
+                    hue = (n / params.count) * 60 + 30; // Gold/Yellow/Green range
+                } else {
+                    // Color based on spiral arm (modulo angle)
+                    hue = (theta * 50) % 360;
+                }
+                
+                // Opacity fade in for new seeds
+                const alpha = Math.min(1, (currentCount - n) / 20);
+
+                ctx.beginPath();
+                ctx.arc(x, y, params.size, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${hue}, 80%, 50%, ${alpha})`;
+                ctx.fill();
+            }
+
+            ctx.restore();
+            requestAnimationFrame(draw);
+        }
+
+        // --- UI ---
+        const pane = new Tweakpane.Pane({ title: 'Nature Engine' });
+        
+        const fGen = pane.addFolder({ title: 'Genetics' });
+        fGen.addInput(params, 'angle', { min: 130, max: 145, step: 0.01, label: 'Divergence' });
+        // Button to snap exactly to Golden Angle
+        fGen.addButton({ title: 'Reset to Golden (137.5°)' }).on('click', () => {
+            params.angle = GOLDEN_ANGLE;
+            currentCount = 0; // Restart animation to show perfect packing
+        });
+
+        const fGrowth = pane.addFolder({ title: 'Growth' });
+        fGrowth.addInput(params, 'count', { min: 100, max: 3000, step: 10 }).on('change', () => currentCount=0);
+        fGrowth.addInput(params, 'spread', { min: 2, max: 20 });
+        fGrowth.addInput(params, 'size', { min: 1, max: 10 });
+        fGrowth.addInput(params, 'animSpeed', { min: 1, max: 20 });
+        fGrowth.addButton({ title: 'Re-Grow' }).on('click', () => currentCount = 0);
+
+        resize();
+        draw();
+
+    </script>
+</body>
+</html>

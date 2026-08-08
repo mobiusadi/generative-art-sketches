@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Architectural Intelligence | DNA Engine</title>
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.1.0/dist/tweakpane.min.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background: #050505; font-family: monospace; }
+        #hud { position: absolute; top: 20px; left: 20px; color: #888; pointer-events: none; }
+        .val { color: #fff; font-weight: bold; }
+        .gold { color: #ffcc00; }
+    </style>
+</head>
+<body>
+    <div id="hud">
+        <div style="font-size:10px; letter-spacing:2px; margin-bottom:5px;">HELIX ENGINE</div>
+        <div>PITCH (Length): <span class="val">34 Å</span></div>
+        <div>WIDTH (Diameter): <span class="val">21 Å</span></div>
+        <div style="margin-top:5px; font-size:11px; color:#444;">Ratio: 34/21 ≈ <span class="gold">1.619</span></div>
+    </div>
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x050505, 0.02);
+        
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 100);
+        camera.position.set(0, 0, 40);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+        
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.autoRotate = true;
+        controls.autoRotateSpeed = 2.0;
+
+        // Lights
+        scene.add(new THREE.AmbientLight(0xffffff, 0.2));
+        const p1 = new THREE.PointLight(0x00ffff, 1, 50); p1.position.set(10, 10, 10); scene.add(p1);
+        const p2 = new THREE.PointLight(0xff0055, 1, 50); p2.position.set(-10, -10, -10); scene.add(p2);
+
+        // DNA Group
+        const dnaGroup = new THREE.Group();
+        scene.add(dnaGroup);
+
+        // Constants (Scaled: 1 unit = 1 Angstrom)
+        const radius = 10.5; // Diameter 21
+        const heightPerBp = 3.4; // 34A per 10 bp
+        const twistPerBp = 36 * (Math.PI / 180); // 36 degrees
+        const basePairs = 40;
+
+        const matBone = new THREE.MeshPhysicalMaterial({ color: 0xffcc00, metalness: 0.3, roughness: 0.2, transparent: true, opacity: 0.8 });
+        const matBase = new THREE.MeshBasicMaterial({ color: 0x00ffff });
+        const matBase2 = new THREE.MeshBasicMaterial({ color: 0xff0055 });
+
+        // Geometry Shared
+        const sphereGeo = new THREE.SphereGeometry(1.2, 16, 16);
+        const cylGeo = new THREE.CylinderGeometry(0.3, 0.3, radius*2 - 2, 8);
+
+        for (let i = -basePairs/2; i < basePairs/2; i++) {
+            const y = i * heightPerBp;
+            const angle = i * twistPerBp;
+            
+            // 1. Backbones
+            const x1 = Math.cos(angle) * radius;
+            const z1 = Math.sin(angle) * radius;
+            const x2 = Math.cos(angle + 2.5) * radius; // Offset for major/minor groove
+            const z2 = Math.sin(angle + 2.5) * radius;
+
+            const b1 = new THREE.Mesh(sphereGeo, matBone); b1.position.set(x1, y, z1); dnaGroup.add(b1);
+            const b2 = new THREE.Mesh(sphereGeo, matBone); b2.position.set(x2, y, z2); dnaGroup.add(b2);
+
+            // 2. Rungs (Base Pairs)
+            // Connect the two strands approx
+            // Visual simplification: Rung connects the two helical paths
+            const midX = (x1 + x2)/2; const midZ = (z1 + z2)/2;
+            const rung = new THREE.Mesh(cylGeo, i%2==0 ? matBase : matBase2);
+            rung.position.set(midX, y, midZ);
+            rung.rotation.y = -Math.atan2(z2-z1, x2-x1);
+            rung.rotation.z = Math.PI/2;
+            rung.scale.y = 0.5; // Shorten rung
+            dnaGroup.add(rung);
+        }
+
+        // DIMENSION MARKERS
+        function createDim(label, len, x, y) {
+            const group = new THREE.Group();
+            const lineMat = new THREE.LineBasicMaterial({ color: 0x444444 });
+            const pts = [new THREE.Vector3(0, len/2, 0), new THREE.Vector3(0, -len/2, 0)];
+            const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), lineMat);
+            group.add(line);
+            
+            // End caps
+            const cap = new THREE.Mesh(new THREE.PlaneGeometry(1, 0.2), new THREE.MeshBasicMaterial({color:0x888888}));
+            const c1 = cap.clone(); c1.position.y = len/2;
+            const c2 = cap.clone(); c2.position.y = -len/2;
+            group.add(c1); group.add(c2);
+            
+            group.position.set(x, y, 0);
+            return group;
+        }
+
+        const dimPitch = createDim("", 34, 15, 0);
+        scene.add(dimPitch);
+        const dimWidth = createDim("", 21, 0, -basePairs/2 * 3.4 - 5);
+        dimWidth.rotation.z = Math.PI/2;
+        scene.add(dimWidth);
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth/window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+        animate();
+    </script>
+</body>
+</html>

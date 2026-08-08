@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MOBIUS | Parametric Snowflakes</title>
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.1.0/dist/tweakpane.min.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #111; }
+        canvas { display: block; width: 100%; height: 100%; }
+        .home-btn {
+            position: fixed; top: 20px; left: 20px;
+            color: #fff; text-decoration: none; font-family: monospace;
+            font-size: 14px; z-index: 1000; opacity: 0.5; transition: 0.3s;
+            mix-blend-mode: difference; border: 1px solid rgba(255,255,255,0.3);
+            padding: 5px 10px; background: rgba(0,0,0,0.5);
+        }
+        .home-btn:hover { opacity: 1.0; background: #fff; color: #000; }
+    </style>
+</head>
+<body>
+
+    <a href="index.html" class="home-btn">← Home</a>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        // --- 1. SETUP ---
+        const canvas = document.getElementById('canvas');
+        const context = canvas.getContext('2d');
+
+        const params = {
+            // Grid Controls
+            rows: 3,
+            cols: 4,
+            margin: 0.8, // Scale factor for flake size within grid cell
+            
+            // Style
+            bgColor: '#111122', // Slightly cool dark blue background
+            lineColor: '#aaccff', // Icy blue lines
+            lineWidth: 1.5,
+
+            // Behavior
+            mode: 'Morphing', // 'Frozen' or 'Morphing'
+            morphSpeed: 0.5,  // Speed of transition
+        };
+
+        let width, height;
+        let flakes = []; // Array to hold snowflake data objects
+        let animationId;
+
+        // Helper for linear interpolation
+        const lerp = (start, end, t) => start * (1 - t) + end * t;
+        const degToRad = (deg) => deg * Math.PI / 180;
+
+        // --- 2. SNOWFLAKE GENOME GENERATOR ---
+        // Creates a set of random parameters defining one unique snowflake shape
+        function generateGenome() {
+            return {
+                // How many branching points along the main spine
+                branchCount: Math.floor(Math.random() * 4) + 2, 
+                // Angle of sub-branches relative to parent
+                branchAngle: randomRange(20, 70), 
+                // How much shorter child branches are (0.5 = half length)
+                lengthDecay: randomRange(0.4, 0.7), 
+                // Thickness taper
+                widthDecay: randomRange(0.5, 0.9),
+                // Max recursion depth (complexity)
+                maxDepth: Math.floor(Math.random() * 3) + 2, 
+                // A unique offset for slight asymmetry/variation
+                seed: Math.random() * 100 
+            };
+        }
+
+        function randomRange(min, max) {
+            return Math.random() * (max - min) + min;
+        }
+
+        // --- 3. THE SNOWFLAKE CLASS ---
+        // Manages the state of a single flake in the grid
+        class Snowflake {
+            constructor() {
+                // Frozen Mode state
+                this.frozenGenome = generateGenome();
+                
+                // Morphing Mode states
+                this.genomeA = generateGenome();
+                this.genomeB = generateGenome();
+                this.morphProgress = 0;
+                this.morphPhase = Math.random() * Math.PI * 2; // Start at different points
+            }
+
+            update(deltaTime) {
+                if (params.mode === 'Morphing') {
+                    // Increment progress based on speed and delta time
+                    this.morphProgress += params.morphSpeed * deltaTime * 0.5;
+                    
+                    // When A completely transforms into B...
+                    if (this.morphProgress >= 1.0) {
+                        this.morphProgress = 0;
+                        // B becomes the new starting point (A)
+                        this.genomeA = this.genomeB;
+                        // Generate a new target (B)
+                        this.genomeB = generateGenome();
+                    }
+                }
+            }
+
+            getCurrentGenome() {
+                if (params.mode === 'Frozen') {
+                    return this.frozenGenome;
+                } else {
+                    // Interpolate between Genome A and Genome B
+                    const t = this.morphProgress;
+                    const gA = this.genomeA;
+                    const gB = this.genomeB;
+                    return {
+                        branchCount: lerp(gA.branchCount, gB.branchCount, t),
+                        branchAngle: lerp(gA.branchAngle, gB.branchAngle, t),
+                        lengthDecay: lerp(gA.lengthDecay, gB.lengthDecay, t),
+                        widthDecay: lerp(gA.widthDecay, gB.widthDecay, t),
+                        maxDepth: lerp(gA.maxDepth, gB.maxDepth, t),
+                        seed: lerp(gA.seed, gB.seed, t)
+                    };
+                }
+            }
+
+            regenerate() {
+                this.frozenGenome = generateGenome();
+                this.genomeA = generateGenome();
+                this.genomeB = generateGenome();
+                this.morphProgress = 0;
+            }
+        }
+
+        // --- 4. RECURSIVE DRAWING FUNCTION ---
+        function drawBranch(ctx, length, thickness, depth, genome) {
+            // Base case to stop recursion
+            if (depth <= 0 || length < 2 || thickness < 0.1) return;
+
+            // Draw the current main stem segment
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(length, 0);
+            ctx.lineWidth = thickness;
+            ctx.stroke();
+
+            // Move to the end of the stem
+            ctx.translate(length, 0);
+
+            // Don't branch on the very last segment tip for a cleaner look
+            if (depth === 1) return;
+
+            // Calculate sub-branch parameters
+            const newLength = length * genome.lengthDecay;
+            const newThickness = thickness * genome.widthDecay;
+            const angleRad = degToRad(genome.branchAngle);
+            
+            // Determine branching points along this stem segment
+            // Using noise/sin to vary where branches appear based on depth and seed
+            const branchPoints = Math.round(genome.branchCount);
+
+            for (let i = 1; i <= branchPoints; i++) {
+                // Calculate position along the stem (e.g., 1/3rd, 2/3rds way down)
+                const t = i / (branchPoints + 1);
+                // A slight variance based on the unique seed
+                const variance = Math.sin(genome.seed + depth + i) * 0.1;
+                const posOnStem = (t + variance) * -length; // Move back down the stem
+
+                ctx.save();
+                ctx.translate(posOnStem, 0); // Go to branching point
+
+                // Mirror Branch 1 (Right side)
+                ctx.save();
+                ctx.rotate(angleRad);
+                drawBranch(ctx, newLength, newThickness, depth - 1, genome);
+                ctx.restore();
+
+                // Mirror Branch 2 (Left side)
+                ctx.save();
+                ctx.rotate(-angleRad);
+                drawBranch(ctx, newLength, newThickness, depth - 1, genome);
+                ctx.restore();
+
+                ctx.restore(); // Go back to stem tip position
+            }
+
+            // Continue main stem recursion straight ahead
+            drawBranch(ctx, newLength, newThickness, depth - 1, genome);
+        }
+
+
+        // --- 5. MAIN RENDER LOOP ---
+        let lastTime = 0;
+        function animate(timeStamp) {
+            const deltaTime = (timeStamp - lastTime) / 1000 || 0; // Convert to seconds
+            lastTime = timeStamp;
+            animationId = requestAnimationFrame(animate);
+
+            // 1. Clear Background
+            context.fillStyle = params.bgColor;
+            context.fillRect(0, 0, width, height);
+
+            // 2. Grid setup
+            const cellWidth = width / params.cols;
+            const cellHeight = height / params.rows;
+            // Radius is half the smaller cell dimension, scaled by margin
+            const maxRadius = Math.min(cellWidth, cellHeight) * 0.5 * params.margin;
+
+            context.strokeStyle = params.lineColor;
+            context.lineCap = 'round';
+
+            let flakeIndex = 0;
+            for (let r = 0; r < params.rows; r++) {
+                for (let c = 0; c < params.cols; c++) {
+                    // Ensure we have a flake object for this cell
+                    if (!flakes[flakeIndex]) flakes[flakeIndex] = new Snowflake();
+                    const flake = flakes[flakeIndex];
+
+                    // Update morph animation
+                    flake.update(deltaTime);
+                    // Get current parameters (either frozen or interpolated)
+                    const genome = flake.getCurrentGenome();
+                    
+                    const centerX = c * cellWidth + cellWidth * 0.5;
+                    const centerY = r * cellHeight + cellHeight * 0.5;
+
+                    context.save();
+                    context.translate(centerX, centerY);
+
+                    // Slowly rotate the entire flake for dynamism
+                    if (params.mode === 'Morphing') {
+                         context.rotate(timeStamp * 0.0001 + flake.morphPhase);
+                    }
+
+                    // DRAW THE 6 ARMS
+                    for (let arm = 0; arm < 6; arm++) {
+                        context.save();
+                        // Rotate 60 degrees (PI/3 radians) for hexagonal symmetry
+                        context.rotate(arm * Math.PI / 3);
+                        // Start the recursive drawing process
+                        // Initial length is the radius, depth rounded down
+                        drawBranch(context, maxRadius, params.lineWidth, Math.floor(genome.maxDepth), genome);
+                        context.restore();
+                    }
+
+                    context.restore();
+                    flakeIndex++;
+                }
+            }
+            // Trim excess flakes if grid shrank
+            if (flakes.length > params.rows * params.cols) {
+                flakes.length = params.rows * params.cols;
+            }
+        }
+
+
+        // --- 6. SETUP & CONTROLS ---
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+        }
+        window.addEventListener('resize', resize);
+
+        const pane = new Tweakpane.Pane({ title: 'Snowflake Generator' });
+        
+        const f1 = pane.addFolder({ title: 'Grid Layout' });
+        f1.addInput(params, 'rows', { min: 1, max: 6, step: 1 });
+        f1.addInput(params, 'cols', { min: 1, max: 8, step: 1 });
+        f1.addInput(params, 'margin', { min: 0.1, max: 1.0, label: 'Size scale' });
+
+        const f2 = pane.addFolder({ title: 'Behavior' });
+        f2.addInput(params, 'mode', { options: { Frozen: 'Frozen', Morphing: 'Morphing' } });
+        f2.addInput(params, 'morphSpeed', { min: 0.1, max: 2.0, label: 'Morph Speed' });
+        f2.addButton({ title: 'Regenerate Frozen' }).on('click', () => {
+            flakes.forEach(f => f.regenerate());
+        });
+
+        const f3 = pane.addFolder({ title: 'Style' });
+        f3.addInput(params, 'bgColor', { label: 'Background' });
+        f3.addInput(params, 'lineColor', { label: 'Ice Color' });
+        f3.addInput(params, 'lineWidth', { min: 0.5, max: 5.0 });
+
+        resize();
+        requestAnimationFrame(animate);
+
+    </script>
+</body>
+</html>

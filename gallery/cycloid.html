@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Architectural Intelligence | The Cycloid</title>
+    <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.1.0/dist/tweakpane.min.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #111; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <script type="module">
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        const params = {
+            radius: 60,         
+            penOffset: 1.0,     // 1.0 = Rim
+            orientation: 'Convex (Arch)', // Convex vs Concave
+            speed: 2.0,
+            showWheel: true,
+            showGhost: true,    
+            color: '#00ffff'
+        };
+
+        let width, height;
+        let angle = 0;          
+        let trace = [];         
+
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+            trace = [];
+            angle = 0;
+        }
+        window.addEventListener('resize', resize);
+
+        function draw() {
+            // Clear
+            ctx.fillStyle = '#111';
+            ctx.fillRect(0, 0, width, height);
+
+            // Baseline (Floor/Ceiling)
+            const baseLineY = height / 2;
+            
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(0, baseLineY);
+            ctx.lineTo(width, baseLineY);
+            ctx.stroke();
+
+            // --- PHYSICS ---
+            angle += params.speed * 0.05;
+
+            // Direction Logic
+            const isArch = params.orientation === 'Convex (Arch)';
+            
+            // Wheel Position
+            const wheelX = params.radius * angle;
+            
+            // If Arch: Wheel sits ON TOP (-radius)
+            // If Valley: Wheel hangs BELOW (+radius)
+            const wheelY = isArch ? (baseLineY - params.radius) : (baseLineY + params.radius);
+
+            // Camera Tracking (Right Aligned)
+            // We want the wheel to stay at 80% of the screen width
+            const targetScreenX = width * 0.8;
+            const cameraX = wheelX - targetScreenX; 
+
+            // Pen Position
+            // Arch: Clockwise Rotation
+            // Valley: Counter-Clockwise Rotation (Rolling along ceiling)
+            const rotation = isArch ? angle : -angle;
+            
+            const localX = Math.sin(rotation) * (params.radius * params.penOffset);
+            const localY = Math.cos(rotation) * (params.radius * params.penOffset);
+            
+            const penX = wheelX - localX; // X follows wheel
+            const penY = wheelY - localY; // Y oscillates
+
+            // Trace Logic
+            if (trace.length === 0 || Math.hypot(trace[trace.length-1].x - penX, trace[trace.length-1].y - penY) > 2) {
+                trace.push({ x: penX, y: penY });
+            }
+
+            // --- DRAWING ---
+            ctx.save();
+            ctx.translate(-cameraX, 0); 
+
+            // 1. Trace
+            if (trace.length > 1) {
+                ctx.strokeStyle = params.color;
+                ctx.lineWidth = 3;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = params.color;
+                
+                ctx.beginPath();
+                // Optimization: Cull off-screen points
+                let startIndex = 0;
+                // Only draw what's visible (CameraX is left edge, CameraX + Width is right edge)
+                for(let i=trace.length-1; i>=0; i--) {
+                    if (trace[i].x < cameraX - 100) {
+                        startIndex = i;
+                        break;
+                    }
+                }
+                
+                ctx.moveTo(trace[startIndex].x, trace[startIndex].y);
+                for (let i = startIndex + 1; i < trace.length; i++) {
+                    ctx.lineTo(trace[i].x, trace[i].y);
+                }
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+            }
+
+            // 2. Mechanism
+            if (params.showWheel) {
+                // Ghosts (Grid)
+                if (params.showGhost) {
+                     ctx.strokeStyle = '#222';
+                     ctx.lineWidth = 1;
+                     // Draw ghost every 1 rotation (2*PI*R)
+                     const circumference = Math.PI * 2 * params.radius;
+                     // Find first visible ghost
+                     const startGhost = Math.floor(cameraX / circumference) * circumference;
+                     
+                     for(let gx = startGhost; gx < wheelX; gx += circumference) {
+                         ctx.beginPath();
+                         ctx.arc(gx, wheelY, params.radius, 0, Math.PI*2);
+                         ctx.stroke();
+                     }
+                }
+
+                // Wheel
+                ctx.strokeStyle = '#666';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(wheelX, wheelY, params.radius, 0, Math.PI * 2);
+                ctx.stroke();
+
+                // Spoke
+                ctx.strokeStyle = '#888';
+                ctx.beginPath();
+                ctx.moveTo(wheelX, wheelY);
+                ctx.lineTo(penX, penY);
+                ctx.stroke();
+
+                // Pen Dot
+                ctx.fillStyle = '#ff0000';
+                ctx.beginPath();
+                ctx.arc(penX, penY, 5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            ctx.restore();
+            requestAnimationFrame(draw);
+        }
+
+        // --- UI ---
+        const pane = new Tweakpane.Pane({ title: 'The Cycloid Engine' });
+        
+        pane.addInput(params, 'radius', { min: 20, max: 150, label: 'Wheel Size' }).on('change', () => { trace=[]; angle=0; });
+        
+        pane.addInput(params, 'orientation', { 
+            options: { 'Convex (Arch)': 'Convex (Arch)', 'Concave (Valley)': 'Concave (Valley)' } 
+        }).on('change', () => { trace=[]; angle=0; });
+
+        pane.addInput(params, 'penOffset', { min: 0.1, max: 2.0, label: 'Pen Position' }).on('change', () => { trace=[]; angle=0; });
+        pane.addInput(params, 'speed', { min: 0, max: 10 });
+        pane.addInput(params, 'color', { label: 'Ink Color' });
+        
+        const fVis = pane.addFolder({ title: 'Visualization' });
+        fVis.addInput(params, 'showWheel', { label: 'Show Mech' });
+        fVis.addInput(params, 'showGhost', { label: 'Show Grid' });
+        
+        fVis.addButton({ title: 'Reset' }).on('click', () => { trace = []; angle = 0; });
+        fVis.addButton({ title: 'Download Image' }).on('click', () => {
+             const link = document.createElement('a');
+             link.download = 'cycloid.png';
+             link.href = canvas.toDataURL();
+             link.click();
+        });
+
+        resize();
+        draw();
+
+    </script>
+</body>
+</html>

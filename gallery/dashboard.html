@@ -3,360 +3,377 @@
 <head>
 <meta charset="UTF-8"><title>Generative Archive</title>
 <style>
-body { margin:0; font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif; background:#121212; color:#fff; }
-h1 { text-align:center; margin:40px 0 20px; font-weight:300; letter-spacing:4px; color:#e0e0e0; }
-.gallery { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:20px; padding:30px; max-width:1400px; margin:0 auto; }
-.card { background:#1e1e1e; border-radius:8px; overflow:hidden; cursor:pointer; transition:transform .2s,box-shadow .2s; box-shadow:0 4px 10px rgba(0,0,0,.5); padding:30px 10px; text-align:center; }
-.card:hover { transform:translateY(-5px); box-shadow:0 8px 15px rgba(0,0,0,.8); }
-.title { font-size:15px; color:#b0b0b0; letter-spacing:1px; }
+:root { --bg:#111; --panel:#1a1a1a; --text:#eee; --dim:#888; --accent:#00ffff; --accent-dim:rgba(0,255,255,.1); --border:#333; }
+body { background:var(--bg); color:var(--text); font-family:'Courier New',monospace; margin:0; padding:20px; }
+header { max-width:1200px; margin:0 auto 30px; border-bottom:2px solid var(--border); padding-bottom:20px; }
+h1 { font-size:24px; text-transform:uppercase; letter-spacing:2px; margin:0 0 15px; color:var(--accent); }
+input#search { width:100%; background:var(--panel); border:1px solid var(--border); color:var(--text); padding:15px; font-family:inherit; font-size:16px; box-sizing:border-box; outline:none; }
+input#search:focus { border-color:var(--accent); background:#222; }
+.container { max-width:1200px; margin:0 auto; display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:20px; }
+.category { grid-column:1/-1; margin-top:30px; margin-bottom:10px; border-bottom:1px solid var(--border); padding-bottom:5px; }
+.category h2 { font-size:14px; color:var(--dim); text-transform:uppercase; margin:0; }
+.file-link { display:block; background:var(--panel); padding:12px 15px; color:var(--text); border:1px solid var(--border); transition:all .2s ease; font-size:13px; cursor:pointer; }
+.file-link:hover { border-color:var(--accent); background:var(--accent-dim); transform:translateX(5px); }
+.file-link .name { display:block; margin-bottom:4px; font-weight:bold; color:#fff; }
+.file-link .meta { font-size:10px; color:var(--dim); text-transform:uppercase; letter-spacing:1px; }
+.tag { float:right; font-size:9px; background:#333; padding:2px 6px; border-radius:4px; color:var(--accent); }
+.hidden { display:none; }
 #modal { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,.95); z-index:1000; flex-direction:column; }
 #modal-close { align-self:flex-end; margin:15px 25px; font-size:40px; cursor:pointer; color:#fff; border:none; background:transparent; }
-#modal-close:hover { color:#f7941d; }
+#modal-close:hover { color:var(--accent); }
 #viewer { width:95%; height:85%; margin:0 auto; border:none; background:#fff; border-radius:4px; }
 </style>
 </head>
 <body>
-<h1>GENERATIVE ARCHIVE</h1>
-<div class="gallery">
-    <div class="card" onclick="openSketch('Billings.html')">
-      <div class="title">Billings</div>
-    </div>
-    <div class="card" onclick="openSketch('Chaos-gasket.html')">
-      <div class="title">Chaos Gasket</div>
-    </div>
-    <div class="card" onclick="openSketch('DNA.html')">
-      <div class="title">Dna</div>
-    </div>
-    <div class="card" onclick="openSketch('LS-system.html')">
-      <div class="title">Ls System</div>
-    </div>
-    <div class="card" onclick="openSketch('Menger-Sponge.html')">
-      <div class="title">Menger Sponge</div>
-    </div>
-    <div class="card" onclick="openSketch('Monochrome-Dynamic-Ashlar.html')">
-      <div class="title">Monochrome Dynamic Ashlar</div>
-    </div>
-    <div class="card" onclick="openSketch('Poly-Lab-v2.html')">
-      <div class="title">Poly Lab V2</div>
-    </div>
-    <div class="card" onclick="openSketch('Polyhedra-v3.html')">
-      <div class="title">Polyhedra V3</div>
-    </div>
-    <div class="card" onclick="openSketch('Schilling.html')">
-      <div class="title">Schilling</div>
-    </div>
-    <div class="card" onclick="openSketch('Star-Morph.html')">
-      <div class="title">Star Morph</div>
-    </div>
-    <div class="card" onclick="openSketch('animated-voronoi.html')">
-      <div class="title">Animated Voronoi</div>
-    </div>
-    <div class="card" onclick="openSketch('asymptotic-engine.html')">
-      <div class="title">Asymptotic Engine</div>
-    </div>
-    <div class="card" onclick="openSketch('blackhole-engine-TNA.html')">
-      <div class="title">Blackhole Engine Tna</div>
-    </div>
-    <div class="card" onclick="openSketch('blackhole-engine.html')">
-      <div class="title">Blackhole Engine</div>
-    </div>
-    <div class="card" onclick="openSketch('block-vault-engine.html')">
-      <div class="title">Block Vault Engine</div>
-    </div>
-    <div class="card" onclick="openSketch('bruno-flowinglines.html')">
-      <div class="title">Bruno Flowinglines</div>
-    </div>
-    <div class="card" onclick="openSketch('cycloid-transition.html')">
-      <div class="title">Cycloid Transition</div>
-    </div>
-    <div class="card" onclick="openSketch('cycloid.html')">
-      <div class="title">Cycloid</div>
-    </div>
-    <div class="card" onclick="openSketch('dichoric.html')">
-      <div class="title">Dichoric</div>
-    </div>
-    <div class="card" onclick="openSketch('ellipse-engine.html')">
-      <div class="title">Ellipse Engine</div>
-    </div>
-    <div class="card" onclick="openSketch('ellipse-panel-3d.html')">
-      <div class="title">Ellipse Panel 3D</div>
-    </div>
-    <div class="card" onclick="openSketch('ellipse-panel-engine.html')">
-      <div class="title">Ellipse Panel Engine</div>
-    </div>
-    <div class="card" onclick="openSketch('flow.html')">
-      <div class="title">Flow</div>
-    </div>
-    <div class="card" onclick="openSketch('geodesic-engine.html')">
-      <div class="title">Geodesic Engine</div>
-    </div>
-    <div class="card" onclick="openSketch('golden-ratio.html')">
-      <div class="title">Golden Ratio</div>
-    </div>
-    <div class="card" onclick="openSketch('grid-noise.html')">
-      <div class="title">Grid Noise</div>
-    </div>
-    <div class="card" onclick="openSketch('hyperbolic-engine.html')">
-      <div class="title">Hyperbolic Engine</div>
-    </div>
-    <div class="card" onclick="openSketch('joy.html')">
-      <div class="title">Joy</div>
-    </div>
-    <div class="card" onclick="openSketch('kinetic-fold.html')">
-      <div class="title">Kinetic Fold</div>
-    </div>
-    <div class="card" onclick="openSketch('matrix-type.html')">
-      <div class="title">Matrix Type</div>
-    </div>
-    <div class="card" onclick="openSketch('murmuration-3d-v2.html')">
-      <div class="title">Murmuration 3D V2</div>
-    </div>
-    <div class="card" onclick="openSketch('murmuration-v2.html')">
-      <div class="title">Murmuration V2</div>
-    </div>
-    <div class="card" onclick="openSketch('network.html')">
-      <div class="title">Network</div>
-    </div>
-    <div class="card" onclick="openSketch('origami-engine.html')">
-      <div class="title">Origami Engine</div>
-    </div>
-    <div class="card" onclick="openSketch('parabolic-engine.html')">
-      <div class="title">Parabolic Engine</div>
-    </div>
-    <div class="card" onclick="openSketch('patterns.html')">
-      <div class="title">Patterns</div>
-    </div>
-    <div class="card" onclick="openSketch('patterns2.html')">
-      <div class="title">Patterns2</div>
-    </div>
-    <div class="card" onclick="openSketch('penrose-engine.html')">
-      <div class="title">Penrose Engine</div>
-    </div>
-    <div class="card" onclick="openSketch('plasma.html')">
-      <div class="title">Plasma</div>
-    </div>
-    <div class="card" onclick="openSketch('platonic-engine.html')">
-      <div class="title">Platonic Engine</div>
-    </div>
-    <div class="card" onclick="openSketch('polar-engine.html')">
-      <div class="title">Polar Engine</div>
-    </div>
-    <div class="card" onclick="openSketch('polyhedra-engine.html')">
-      <div class="title">Polyhedra Engine</div>
-    </div>
-    <div class="card" onclick="openSketch('reciprocal-engine.html')">
-      <div class="title">Reciprocal Engine</div>
-    </div>
-    <div class="card" onclick="openSketch('roulette-engine.html')">
-      <div class="title">Roulette Engine</div>
-    </div>
-    <div class="card" onclick="openSketch('ruled-engine.html')">
-      <div class="title">Ruled Engine</div>
-    </div>
-    <div class="card" onclick="openSketch('scan-lines.html')">
-      <div class="title">Scan Lines</div>
-    </div>
-    <div class="card" onclick="openSketch('scissor-engine.html')">
-      <div class="title">Scissor Engine</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-01.html')">
-      <div class="title">01</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-03.html')">
-      <div class="title">03</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-04.html')">
-      <div class="title">04</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-05.html')">
-      <div class="title">05</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-architecture-stained-glass.html')">
-      <div class="title">Architecture Stained Glass</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-architecture.html')">
-      <div class="title">Architecture</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-ashlar-advanced.html')">
-      <div class="title">Ashlar Advanced</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-ashlar-gradient.html')">
-      <div class="title">Ashlar Gradient</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-ashlar-grain.html')">
-      <div class="title">Ashlar Grain</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-ashlar-radom-gradient.html')">
-      <div class="title">Ashlar Radom Gradient</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-ashlar.html')">
-      <div class="title">Ashlar</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-audio.html')">
-      <div class="title">Audio</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-blobs-3d.html')">
-      <div class="title">Blobs 3D</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-blobs.html')">
-      <div class="title">Blobs</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-cube.html')">
-      <div class="title">Cube</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-dichoric-palletes.html')">
-      <div class="title">Dichoric Palletes</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-dichoric.html')">
-      <div class="title">Dichoric</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-flow-field-1-251221.html')">
-      <div class="title">Flow Field 1 251221</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-flowing-colors-tweakpane.html')">
-      <div class="title">Flowing Colors Tweakpane</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-flowing-lines-colors-251221.html')">
-      <div class="title">Flowing Lines Colors 251221</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-flowing-lines-tweak-251221.html')">
-      <div class="title">Flowing Lines Tweak 251221</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-flowing-magma.html')">
-      <div class="title">Flowing Magma</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-interactive-ashlar.html')">
-      <div class="title">Interactive Ashlar</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-interactive-explosion.html')">
-      <div class="title">Interactive Explosion</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-interference.html')">
-      <div class="title">Interference</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-lieberman-1-251221.html')">
-      <div class="title">Lieberman 1 251221</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-lieberman-plasma.html')">
-      <div class="title">Lieberman Plasma</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-living-facade.html')">
-      <div class="title">Living Facade</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-logo-classes.html')">
-      <div class="title">Logo Classes</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-logo-physics-2.html')">
-      <div class="title">Logo Physics 2</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-logo-physics.html')">
-      <div class="title">Logo Physics</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-logo.html')">
-      <div class="title">Logo</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-louvre.html')">
-      <div class="title">Louvre</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-moprh-train.html')">
-      <div class="title">Moprh Train</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-origami.html')">
-      <div class="title">Origami</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-particles.html')">
-      <div class="title">Particles</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-ridges.html')">
-      <div class="title">Ridges</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-rubrik-snake.html')">
-      <div class="title">Rubrik Snake</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-saver.html')">
-      <div class="title">Saver</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-scanlines-pro.html')">
-      <div class="title">Scanlines Pro</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-scanlines.html')">
-      <div class="title">Scanlines</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-signal-flow.html')">
-      <div class="title">Signal Flow</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-solar-3d.html')">
-      <div class="title">Solar 3D</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-tiles.html')">
-      <div class="title">Tiles</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-tower-test.html')">
-      <div class="title">Tower Test</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-tubes-flat.html')">
-      <div class="title">Tubes Flat</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-tubes.html')">
-      <div class="title">Tubes</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-vera-molnar.html')">
-      <div class="title">Vera Molnar</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-voronoi.html')">
-      <div class="title">Voronoi</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-zach-knotts-1-251221.html')">
-      <div class="title">Zach Knotts 1 251221</div>
-    </div>
-    <div class="card" onclick="openSketch('sketch-zach-organic.html')">
-      <div class="title">Zach Organic</div>
-    </div>
-    <div class="card" onclick="openSketch('snowflakes-card.html')">
-      <div class="title">Snowflakes Card</div>
-    </div>
-    <div class="card" onclick="openSketch('snowflakes.html')">
-      <div class="title">Snowflakes</div>
-    </div>
-    <div class="card" onclick="openSketch('speed-of-code.html')">
-      <div class="title">Speed Of Code</div>
-    </div>
-    <div class="card" onclick="openSketch('spirograph.html')">
-      <div class="title">Spirograph</div>
-    </div>
-    <div class="card" onclick="openSketch('stained-glass-voronoi.html')">
-      <div class="title">Stained Glass Voronoi</div>
-    </div>
-    <div class="card" onclick="openSketch('sunflower-engine.html')">
-      <div class="title">Sunflower Engine</div>
-    </div>
-    <div class="card" onclick="openSketch('tiling-export.html')">
-      <div class="title">Tiling Export</div>
-    </div>
-    <div class="card" onclick="openSketch('tiling.html')">
-      <div class="title">Tiling</div>
-    </div>
-    <div class="card" onclick="openSketch('torus.html')">
-      <div class="title">Torus</div>
-    </div>
-    <div class="card" onclick="openSketch('tower.html')">
-      <div class="title">Tower</div>
-    </div>
-    <div class="card" onclick="openSketch('trig.html')">
-      <div class="title">Trig</div>
-    </div>
-    <div class="card" onclick="openSketch('voronoi-dual.html')">
-      <div class="title">Voronoi Dual</div>
-    </div>
-    <div class="card" onclick="openSketch('voronoi.html')">
-      <div class="title">Voronoi</div>
-    </div>
-    <div class="card" onclick="openSketch('weare-phelan.html')">
-      <div class="title">Weare Phelan</div>
-    </div>
-    <div class="card" onclick="openSketch('zach-loops.html')">
-      <div class="title">Zach Loops</div>
-    </div>
+<header>
+<h1>Architectural Intelligence // Index</h1>
+<input type="text" id="search" placeholder="Filter scripts (e.g. 'golden', 'v5')..." onkeyup="filterList()">
+</header>
+<div class="container" id="file-list">
+    <div class="category"><h2>Geometric Engines</h2></div>
+      <div class="file-link" onclick="openSketch('Chaos-gasket.html')">
+        <span class="tag">v2</span><span class="name">Chaos Gasket</span><span class="meta">Chaos Game / Fractals</span>
+      </div>
+      <div class="file-link" onclick="openSketch('Menger-Sponge.html')">
+        <span class="tag">v3</span><span class="name">Menger Sponge</span><span class="meta">Fractal Cubes</span>
+      </div>
+      <div class="file-link" onclick="openSketch('Poly-Lab-v2.html')">
+        <span class="tag">v2</span><span class="name">Poly Lab V2</span><span class="meta">Polygon Laboratory</span>
+      </div>
+      <div class="file-link" onclick="openSketch('Polyhedra-v3.html')">
+        <span class="name">Polyhedra V3</span><span class="meta">Polyhedral Forms</span>
+      </div>
+      <div class="file-link" onclick="openSketch('asymptotic-engine.html')">
+        <span class="name">Asymptotic Engine</span><span class="meta">Asymptotic Curves</span>
+      </div>
+      <div class="file-link" onclick="openSketch('cycloid.html')">
+        <span class="name">Cycloid</span><span class="meta">Cycloid Mechanics</span>
+      </div>
+      <div class="file-link" onclick="openSketch('ellipse-engine.html')">
+        <span class="tag">v2</span><span class="name">Ellipse Engine</span><span class="meta">Elliptical Tools</span>
+      </div>
+      <div class="file-link" onclick="openSketch('geodesic-engine.html')">
+        <span class="name">Geodesic Engine</span><span class="meta">Geodesic Domes</span>
+      </div>
+      <div class="file-link" onclick="openSketch('golden-ratio.html')">
+        <span class="tag">v5</span><span class="name">Golden Ratio</span><span class="meta">The Golden Ratio</span>
+      </div>
+      <div class="file-link" onclick="openSketch('hyperbolic-engine.html')">
+        <span class="tag">v4</span><span class="name">Hyperbolic Engine</span><span class="meta">Hyperbolic Geometry</span>
+      </div>
+      <div class="file-link" onclick="openSketch('parabolic-engine.html')">
+        <span class="tag">v2</span><span class="name">Parabolic Engine</span><span class="meta">Parabolic Arcs</span>
+      </div>
+      <div class="file-link" onclick="openSketch('penrose-engine.html')">
+        <span class="name">Penrose Engine</span><span class="meta">Aperiodic Tiling</span>
+      </div>
+      <div class="file-link" onclick="openSketch('platonic-engine.html')">
+        <span class="tag">v1</span><span class="name">Platonic Engine</span><span class="meta">Platonic Solids</span>
+      </div>
+      <div class="file-link" onclick="openSketch('polar-engine.html')">
+        <span class="tag">v5</span><span class="name">Polar Engine</span><span class="meta">Superformula Plotter</span>
+      </div>
+      <div class="file-link" onclick="openSketch('polyhedra-engine.html')">
+        <span class="name">Polyhedra Engine</span><span class="meta">Polyhedral Forms</span>
+      </div>
+      <div class="file-link" onclick="openSketch('roulette-engine.html')">
+        <span class="tag">v2</span><span class="name">Roulette Engine</span><span class="meta">Rolling Curves</span>
+      </div>
+      <div class="file-link" onclick="openSketch('spirograph.html')">
+        <span class="tag">v1</span><span class="name">Spirograph</span><span class="meta">Epicycles</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sunflower-engine.html')">
+        <span class="tag">v1</span><span class="name">Sunflower Engine</span><span class="meta">Phyllotaxis</span>
+      </div>
+      <div class="file-link" onclick="openSketch('tiling.html')">
+        <span class="name">Tiling</span><span class="meta">Tiling Patterns</span>
+      </div>
+      <div class="file-link" onclick="openSketch('trig.html')">
+        <span class="tag">v2</span><span class="name">Trig</span><span class="meta">Trigonometry Viz</span>
+      </div>
+      <div class="file-link" onclick="openSketch('voronoi.html')">
+        <span class="name">Voronoi</span><span class="meta">Voronoi Tessellation</span>
+      </div>
+    <div class="category"><h2>Architecture & Structure</h2></div>
+      <div class="file-link" onclick="openSketch('Billings.html')">
+        <span class="name">Billings</span><span class="meta">Selfridges Disc Rationalization</span>
+      </div>
+      <div class="file-link" onclick="openSketch('blackhole-engine-TNA.html')">
+        <span class="name">Blackhole Engine Tna</span><span class="meta">Thrust Network Analysis</span>
+      </div>
+      <div class="file-link" onclick="openSketch('block-vault-engine.html')">
+        <span class="name">Block Vault Engine</span><span class="meta">Funicular Form-Finding</span>
+      </div>
+      <div class="file-link" onclick="openSketch('ellipse-panel-3d.html')">
+        <span class="tag">v2</span><span class="name">Ellipse Panel 3D</span><span class="meta">Panelization 3D</span>
+      </div>
+      <div class="file-link" onclick="openSketch('ellipse-panel-engine.html')">
+        <span class="tag">v5</span><span class="name">Ellipse Panel Engine</span><span class="meta">Panelization 2D</span>
+      </div>
+      <div class="file-link" onclick="openSketch('kinetic-fold.html')">
+        <span class="tag">v4</span><span class="name">Kinetic Fold</span><span class="meta">Kinetic Facades</span>
+      </div>
+      <div class="file-link" onclick="openSketch('origami-engine.html')">
+        <span class="tag">v3</span><span class="name">Origami Engine</span><span class="meta">Folding Logic</span>
+      </div>
+      <div class="file-link" onclick="openSketch('reciprocal-engine.html')">
+        <span class="name">Reciprocal Engine</span><span class="meta">Reciprocal Frames</span>
+      </div>
+      <div class="file-link" onclick="openSketch('ruled-engine.html')">
+        <span class="tag">v2</span><span class="name">Ruled Engine</span><span class="meta">Ruled Surfaces</span>
+      </div>
+      <div class="file-link" onclick="openSketch('scissor-engine.html')">
+        <span class="name">Scissor Engine</span><span class="meta">Scissor Mechanisms</span>
+      </div>
+      <div class="file-link" onclick="openSketch('tower.html')">
+        <span class="name">Tower</span><span class="meta">Tower Generation</span>
+      </div>
+      <div class="file-link" onclick="openSketch('weare-phelan.html')">
+        <span class="tag">v3</span><span class="name">Weare Phelan</span><span class="meta">Weaire-Phelan Foam</span>
+      </div>
+    <div class="category"><h2>Physics & Nature</h2></div>
+      <div class="file-link" onclick="openSketch('DNA.html')">
+        <span class="name">Dna</span><span class="meta">Helix Structure</span>
+      </div>
+      <div class="file-link" onclick="openSketch('LS-system.html')">
+        <span class="tag">v3</span><span class="name">Ls System</span><span class="meta">L-Systems (Botany)</span>
+      </div>
+      <div class="file-link" onclick="openSketch('blackhole-engine.html')">
+        <span class="name">Blackhole Engine</span><span class="meta">Singularity Metric</span>
+      </div>
+      <div class="file-link" onclick="openSketch('flow.html')">
+        <span class="name">Flow</span><span class="meta">Fluid Dynamics</span>
+      </div>
+      <div class="file-link" onclick="openSketch('murmuration-3d-v2.html')">
+        <span class="tag">v2</span><span class="name">Murmuration 3D V2</span><span class="meta">Swarm Behavior</span>
+      </div>
+      <div class="file-link" onclick="openSketch('network.html')">
+        <span class="name">Network</span><span class="meta">Network Graph</span>
+      </div>
+      <div class="file-link" onclick="openSketch('snowflakes.html')">
+        <span class="name">Snowflakes</span><span class="meta">Crystal Growth</span>
+      </div>
+    <div class="category"><h2>Visuals & Effects</h2></div>
+      <div class="file-link" onclick="openSketch('Star-Morph.html')">
+        <span class="name">Star Morph</span><span class="meta">Star Field / 3D Morph</span>
+      </div>
+      <div class="file-link" onclick="openSketch('animated-voronoi.html')">
+        <span class="name">Animated Voronoi</span><span class="meta">Active Voronoi</span>
+      </div>
+      <div class="file-link" onclick="openSketch('bruno-flowinglines.html')">
+        <span class="name">Bruno Flowinglines</span><span class="meta">Flow Lines</span>
+      </div>
+      <div class="file-link" onclick="openSketch('dichoric.html')">
+        <span class="name">Dichoric</span><span class="meta">Dichroic Glass</span>
+      </div>
+      <div class="file-link" onclick="openSketch('grid-noise.html')">
+        <span class="name">Grid Noise</span><span class="meta">Noise Grid</span>
+      </div>
+      <div class="file-link" onclick="openSketch('joy.html')">
+        <span class="name">Joy</span><span class="meta">Joy Division Plot</span>
+      </div>
+      <div class="file-link" onclick="openSketch('matrix-type.html')">
+        <span class="name">Matrix Type</span><span class="meta">Matrix Rain</span>
+      </div>
+      <div class="file-link" onclick="openSketch('patterns.html')">
+        <span class="name">Patterns</span><span class="meta">Pattern Gen</span>
+      </div>
+      <div class="file-link" onclick="openSketch('patterns2.html')">
+        <span class="name">Patterns2</span><span class="meta">Pattern Gen 2</span>
+      </div>
+      <div class="file-link" onclick="openSketch('plasma.html')">
+        <span class="name">Plasma</span><span class="meta">Plasma Shader</span>
+      </div>
+      <div class="file-link" onclick="openSketch('scan-lines.html')">
+        <span class="name">Scan Lines</span><span class="meta">CRT Effect</span>
+      </div>
+      <div class="file-link" onclick="openSketch('speed-of-code.html')">
+        <span class="name">Speed Of Code</span><span class="meta">Typing Effect</span>
+      </div>
+      <div class="file-link" onclick="openSketch('stained-glass-voronoi.html')">
+        <span class="name">Stained Glass Voronoi</span><span class="meta">Color Shader</span>
+      </div>
+      <div class="file-link" onclick="openSketch('torus.html')">
+        <span class="name">Torus</span><span class="meta">Torus Knot</span>
+      </div>
+    <div class="category"><h2>Generative Sketches</h2></div>
+      <div class="file-link" onclick="openSketch('Monochrome-Dynamic-Ashlar.html')">
+        <span class="name">Monochrome Dynamic Ashlar</span>
+      </div>
+      <div class="file-link" onclick="openSketch('Schilling.html')">
+        <span class="name">Schilling</span>
+      </div>
+      <div class="file-link" onclick="openSketch('cycloid-transition.html')">
+        <span class="name">Cycloid Transition</span>
+      </div>
+      <div class="file-link" onclick="openSketch('murmuration-v2.html')">
+        <span class="name">Murmuration V2</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-01.html')">
+        <span class="name">Sketch 01</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-03.html')">
+        <span class="name">Sketch 03</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-04.html')">
+        <span class="name">Sketch 04</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-05.html')">
+        <span class="name">Sketch 05</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-architecture-stained-glass.html')">
+        <span class="name">Sketch Architecture Stained Glass</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-architecture.html')">
+        <span class="name">Sketch Architecture</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-ashlar-advanced.html')">
+        <span class="name">Sketch Ashlar Advanced</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-ashlar-gradient.html')">
+        <span class="name">Sketch Ashlar Gradient</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-ashlar-grain.html')">
+        <span class="name">Sketch Ashlar Grain</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-ashlar-radom-gradient.html')">
+        <span class="name">Sketch Ashlar Radom Gradient</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-ashlar.html')">
+        <span class="name">Sketch Ashlar</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-audio.html')">
+        <span class="name">Sketch Audio</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-blobs-3d.html')">
+        <span class="name">Sketch Blobs 3D</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-blobs.html')">
+        <span class="name">Sketch Blobs</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-cube.html')">
+        <span class="name">Sketch Cube</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-dichoric-palletes.html')">
+        <span class="name">Sketch Dichoric Palletes</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-dichoric.html')">
+        <span class="name">Sketch Dichoric</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-flow-field-1-251221.html')">
+        <span class="name">Sketch Flow Field 1 251221</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-flowing-colors-tweakpane.html')">
+        <span class="name">Sketch Flowing Colors Tweakpane</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-flowing-lines-colors-251221.html')">
+        <span class="name">Sketch Flowing Lines Colors 251221</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-flowing-lines-tweak-251221.html')">
+        <span class="name">Sketch Flowing Lines Tweak 251221</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-flowing-magma.html')">
+        <span class="name">Sketch Flowing Magma</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-interactive-ashlar.html')">
+        <span class="name">Sketch Interactive Ashlar</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-interactive-explosion.html')">
+        <span class="name">Sketch Interactive Explosion</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-interference.html')">
+        <span class="name">Sketch Interference</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-lieberman-1-251221.html')">
+        <span class="name">Sketch Lieberman 1 251221</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-lieberman-plasma.html')">
+        <span class="name">Sketch Lieberman Plasma</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-living-facade.html')">
+        <span class="name">Sketch Living Facade</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-logo-classes.html')">
+        <span class="name">Sketch Logo Classes</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-logo-physics-2.html')">
+        <span class="name">Sketch Logo Physics 2</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-logo-physics.html')">
+        <span class="name">Sketch Logo Physics</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-logo.html')">
+        <span class="name">Sketch Logo</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-louvre.html')">
+        <span class="name">Sketch Louvre</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-moprh-train.html')">
+        <span class="name">Sketch Moprh Train</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-origami.html')">
+        <span class="name">Sketch Origami</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-particles.html')">
+        <span class="name">Sketch Particles</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-ridges.html')">
+        <span class="name">Sketch Ridges</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-rubrik-snake.html')">
+        <span class="name">Sketch Rubrik Snake</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-saver.html')">
+        <span class="name">Sketch Saver</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-scanlines-pro.html')">
+        <span class="name">Sketch Scanlines Pro</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-scanlines.html')">
+        <span class="name">Sketch Scanlines</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-signal-flow.html')">
+        <span class="name">Sketch Signal Flow</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-solar-3d.html')">
+        <span class="name">Sketch Solar 3D</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-tiles.html')">
+        <span class="name">Sketch Tiles</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-tower-test.html')">
+        <span class="name">Sketch Tower Test</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-tubes-flat.html')">
+        <span class="name">Sketch Tubes Flat</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-tubes.html')">
+        <span class="name">Sketch Tubes</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-vera-molnar.html')">
+        <span class="name">Sketch Vera Molnar</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-voronoi.html')">
+        <span class="name">Sketch Voronoi</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-zach-knotts-1-251221.html')">
+        <span class="name">Sketch Zach Knotts 1 251221</span>
+      </div>
+      <div class="file-link" onclick="openSketch('sketch-zach-organic.html')">
+        <span class="name">Sketch Zach Organic</span>
+      </div>
+      <div class="file-link" onclick="openSketch('snowflakes-card.html')">
+        <span class="name">Snowflakes Card</span>
+      </div>
+      <div class="file-link" onclick="openSketch('tiling-export.html')">
+        <span class="name">Tiling Export</span>
+      </div>
+      <div class="file-link" onclick="openSketch('voronoi-dual.html')">
+        <span class="name">Voronoi Dual</span>
+      </div>
+      <div class="file-link" onclick="openSketch('zach-loops.html')">
+        <span class="name">Zach Loops</span>
+      </div>
 </div>
 <div id="modal">
 <button id="modal-close" onclick="closeSketch()">&times;</button>
@@ -365,6 +382,14 @@ h1 { text-align:center; margin:40px 0 20px; font-weight:300; letter-spacing:4px;
 <script>
 function openSketch(url) { document.getElementById('viewer').src=url; document.getElementById('modal').style.display='flex'; }
 function closeSketch() { document.getElementById('viewer').src=''; document.getElementById('modal').style.display='none'; }
+function filterList() {
+  const filter = document.getElementById('search').value.toUpperCase();
+  const links = document.getElementById('file-list').getElementsByClassName('file-link');
+  for (let i = 0; i < links.length; i++) {
+    const txt = links[i].textContent || links[i].innerText;
+    links[i].classList.toggle('hidden', txt.toUpperCase().indexOf(filter) === -1);
+  }
+}
 </script>
 </body>
 </html>

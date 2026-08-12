@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Architectural Intelligence | Suprematist Engine</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23f4f1ea'/%3E%3Cg transform='rotate(-12 16 16)'%3E%3Crect x='6' y='6' width='16' height='16' fill='%23111'/%3E%3Crect x='16' y='16' width='10' height='6' fill='%23c62828'/%3E%3C/g%3E%3C/svg%3E">
+<style>
+    body { margin: 0; overflow: hidden; background-color: #111; font-family: 'Helvetica Neue', Arial, sans-serif; color: #fff; }
+    canvas { display: block; cursor: default; }
+
+    #ui {
+        position: absolute; top: 20px; right: 20px; width: 300px;
+        background: rgba(20, 20, 25, 0.95); border-radius: 8px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.6); border: 1px solid #333;
+        max-height: 92vh; display: flex; flex-direction: column; user-select: none;
+    }
+    #panelHeader {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 14px 16px; cursor: move; border-bottom: 1px solid #333; flex-shrink: 0;
+    }
+    #panelBody { padding: 0 20px 20px 20px; overflow-y: auto; }
+    #ui.collapsed #panelBody { display: none; }
+    #ui.collapsed { width: auto; }
+    #ui.collapsed #panelHeader { border-bottom: none; }
+
+    h1 { font-size: 12px; letter-spacing: 2px; color: #e0a627; text-transform: uppercase; margin: 0; white-space: nowrap; }
+    h2 { font-size: 10px; letter-spacing: 1px; color: #666; text-transform: uppercase; margin: 18px 0 10px 0; }
+
+    #collapseBtn {
+        background: transparent; border: 1px solid #444; color: #888; width: 22px; height: 22px;
+        border-radius: 4px; cursor: pointer; font-size: 14px; line-height: 1; padding: 0;
+        display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-left: 12px;
+    }
+    #collapseBtn:hover { border-color: #e0a627; color: #e0a627; }
+
+    .row { margin-bottom: 14px; }
+    label { display: flex; justify-content: space-between; font-size: 10px; color: #888; text-transform: uppercase; margin-bottom: 6px; }
+    label span.val { color: #e0a627; }
+
+    input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
+    input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 14px; width: 14px; border-radius: 50%; background: #e0a627; cursor: pointer; margin-top: -5px; }
+    input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: #333; border-radius: 2px; }
+
+    input[type=number], select {
+        width: 100%; padding: 8px; background: #222; border: 1px solid #444; color: #fff;
+        border-radius: 4px; outline: none; font-size: 12px; box-sizing: border-box;
+    }
+    select { cursor: pointer; }
+
+    .btn-row { display: flex; gap: 8px; }
+    button {
+        flex: 1; padding: 9px; background: #222; border: 1px solid #444; color: #fff;
+        border-radius: 4px; cursor: pointer; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    button:hover { border-color: #e0a627; color: #e0a627; }
+    button.primary { background: #e0a627; color: #111; border-color: #e0a627; font-weight: bold; }
+    button.primary:hover { background: #f0b93d; color: #111; }
+
+    #historyList { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip {
+        padding: 5px 9px; background: #222; border: 1px solid #444; border-radius: 4px;
+        font-size: 11px; color: #aaa; cursor: pointer;
+    }
+    .chip:hover { border-color: #e0a627; color: #e0a627; }
+    .chip.active { background: #e0a627; color: #111; border-color: #e0a627; font-weight: bold; }
+    .empty-hint { font-size: 10px; color: #555; }
+    .hint { font-size: 10px; color: #666; line-height: 1.5; margin-top: 4px; }
+
+    .watermark { position: absolute; bottom: 20px; left: 20px; pointer-events: none; opacity: 0.5; }
+    .watermark h2 { font-size: 12px; margin: 0; color: #fff; letter-spacing: 2px; text-transform: none; }
+    .watermark p { font-size: 9px; color: #666; margin: 2px 0 0 0; }
+</style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+
+<div class="watermark">
+    <h2>SUPREMATIST ENGINE</h2>
+    <p>SEED-GENERATED / HAND-TUNED COMPOSITION</p>
+</div>
+
+<div id="ui">
+    <div id="panelHeader">
+        <h1>Suprematist Engine</h1>
+        <button id="collapseBtn" onclick="toggleCollapse()">−</button>
+    </div>
+    <div id="panelBody">
+
+    <div class="row">
+        <label>Seed <span class="val" id="seedVal">1</span></label>
+        <input type="number" id="seed" value="1" min="0" step="1">
+        <div class="btn-row" style="margin-top:8px;">
+            <button onclick="randomSeed()">Random Seed</button>
+            <button class="primary" onclick="regenerate()">New Composition</button>
+        </div>
+        <div class="hint">Regenerating replaces the current layout, including any manual adjustments below.</div>
+    </div>
+
+    <h2>History</h2>
+    <div class="row">
+        <div id="historyList"><span class="empty-hint">Seeds you generate will appear here — click to revisit.</span></div>
+    </div>
+
+    <h2>Composition</h2>
+    <div class="row">
+        <label>Complexity <span class="val" id="complexityVal">12</span></label>
+        <input type="range" id="complexity" min="6" max="22" value="12" step="1">
+    </div>
+    <div class="row">
+        <label>Flight Axis Angle <span class="val" id="axisAngleVal">–</span></label>
+        <input type="range" id="axisAngle" min="-70" max="70" value="35" step="1">
+    </div>
+    <div class="row">
+        <label>Show Connecting Lines</label>
+        <select id="showStems">
+            <option value="yes" selected>Yes</option>
+            <option value="no">No</option>
+        </select>
+    </div>
+
+    <h2>Selected Shape</h2>
+    <div class="row">
+        <label>Pick Shape (or click one on canvas)</label>
+        <select id="shapeSelect"></select>
+    </div>
+    <div class="row">
+        <label>X Position <span class="val" id="shapeXVal">–</span></label>
+        <input type="range" id="shapeX" min="0" max="1000" value="500" step="1">
+    </div>
+    <div class="row">
+        <label>Y Position <span class="val" id="shapeYVal">–</span></label>
+        <input type="range" id="shapeY" min="0" max="1000" value="500" step="1">
+    </div>
+    <div class="row">
+        <label>Rotation <span class="val" id="shapeRotVal">0°</span></label>
+        <input type="range" id="shapeRot" min="0" max="360" value="0" step="1">
+    </div>
+    <div class="row">
+        <label>Scale <span class="val" id="shapeScaleVal">1.00</span></label>
+        <input type="range" id="shapeScale" min="0.3" max="2.5" value="1" step="0.05">
+    </div>
+    <div class="row">
+        <label>Color</label>
+        <select id="shapeColor"></select>
+    </div>
+    <div class="hint">Tip: click and drag any shape directly on the canvas to move it — the sliders above will track it live.</div>
+
+    <h2>Export</h2>
+    <div class="btn-row">
+        <button onclick="downloadImage()">Download PNG</button>
+    </div>
+
+    </div>
+</div>
+
+<script>
+// --- SEEDED RNG (mulberry32) ---
+function mulberry32(a) {
+    return function() {
+        a |= 0; a = a + 0x6D2B79F5 | 0;
+        let t = Math.imul(a ^ a >>> 15, 1 | a);
+        t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+        return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+}
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const $ = id => document.getElementById(id);
+
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+
+// --- PALETTE ---
+const PALETTE = [
+    { hex: '#c62828', name: 'Red' },
+    { hex: '#e0a627', name: 'Ochre' },
+    { hex: '#111111', name: 'Black' },
+    { hex: '#1e4d8c', name: 'Blue' },
+    { hex: '#e8b4c8', name: 'Pink' },
+    { hex: '#8b5a2b', name: 'Brown' },
+    { hex: '#2e7d32', name: 'Green' },
+    { hex: '#9e9e9e', name: 'Grey' },
+];
+function randomColor(rng) { return PALETTE[Math.floor(rng() * PALETTE.length)].hex; }
+function colorName(hex) { const p = PALETTE.find(p => p.hex === hex); return p ? p.name : hex; }
+
+// --- PANEL: COLLAPSE ---
+function toggleCollapse() {
+    const panel = document.getElementById('ui');
+    panel.classList.toggle('collapsed');
+    document.getElementById('collapseBtn').innerText = panel.classList.contains('collapsed') ? '+' : '−';
+}
+
+// --- PANEL: DRAG ---
+(function() {
+    const panel = document.getElementById('ui');
+    const handle = document.getElementById('panelHeader');
+    let dragging = false, offsetX = 0, offsetY = 0;
+    handle.addEventListener('mousedown', (e) => {
+        if (e.target.id === 'collapseBtn') return;
+        dragging = true;
+        const rect = panel.getBoundingClientRect();
+        offsetX = e.clientX - rect.left; offsetY = e.clientY - rect.top;
+        panel.style.right = 'auto'; panel.style.left = rect.left + 'px'; panel.style.top = rect.top + 'px';
+    });
+    window.addEventListener('mousemove', (e) => {
+        if (!dragging) return;
+        let x = Math.max(0, Math.min(window.innerWidth - 60, e.clientX - offsetX));
+        let y = Math.max(0, Math.min(window.innerHeight - 40, e.clientY - offsetY));
+        panel.style.left = x + 'px'; panel.style.top = y + 'px';
+    });
+    window.addEventListener('mouseup', () => { dragging = false; });
+})();
+
+// --- SEED HISTORY ---
+let seedHistory = [];
+function recordSeed(seed) {
+    seedHistory = seedHistory.filter(s => s !== seed);
+    seedHistory.unshift(seed);
+    if (seedHistory.length > 15) seedHistory.pop();
+    renderHistory(seed);
+}
+function renderHistory(current) {
+    const el = $('historyList');
+    if (seedHistory.length === 0) {
+        el.innerHTML = '<span class="empty-hint">Seeds you generate will appear here — click to revisit.</span>';
+        return;
+    }
+    el.innerHTML = seedHistory.map(s =>
+        `<span class="chip ${s === current ? 'active' : ''}" onclick="jumpToSeed(${s})">${s}</span>`
+    ).join('');
+}
+function jumpToSeed(s) {
+    $('seed').value = s; $('seedVal').innerText = s;
+    regenerate();
+}
+
+// --- SHAPE MODEL ---
+// Each shape: { id, tier, type, x, y, baseW, baseH, scale, rotation, color }
+let shapes = [];
+let selectedIndex = -1;
+
+function makeShape(rng, tier, x, y, sizeMin, sizeMax) {
+    const tierTypes = {
+        anchor: ['rect', 'bar'],
+        mid: ['rect', 'bar', 'triangle', 'crescent'],
+        accent: ['cross', 'circle', 'bar', 'dot'],
+    };
+    const types = tierTypes[tier];
+    const type = types[Math.floor(rng() * types.length)];
+    let w = sizeMin + rng() * (sizeMax - sizeMin);
+    const aspect = tier === 'anchor' ? (0.4 + rng() * 0.9) : (0.25 + rng() * 1.2);
+    let h = type === 'bar' ? w * 0.18 : w * aspect;
+    if (type === 'dot') { w = Math.max(6, w * 0.15); h = w; }
+    if (type === 'cross') h = w;
+    return {
+        tier, type, x, y,
+        baseW: w, baseH: h, scale: 1,
+        rotation: Math.round(rng() * 360),
+        color: type === 'cross' ? '#111111' : randomColor(rng),
+    };
+}
+
+function generateComposition() {
+    const seed = parseInt($('seed').value) || 0;
+    recordSeed(seed);
+    const rng = mulberry32(seed);
+
+    const w = canvas.width, h = canvas.height;
+    const complexity = parseInt($('complexity').value);
+    const axisDeg = parseInt($('axisAngle').value);
+    $('axisAngleVal').innerText = axisDeg + '°';
+    const axisRad = axisDeg * Math.PI / 180;
+    const dirX = Math.sin(axisRad), dirY = Math.cos(axisRad);
+
+    const cx = w * 0.42 + rng() * w * 0.16;
+    const cy = h * 0.32 + rng() * h * 0.18;
+    const spread = Math.max(w, h) * 0.32;
+
+    const numAnchors = 1 + Math.floor(rng() * 2);
+    const numMid = 3 + Math.floor(rng() * 3);
+    const numAccent = Math.max(3, complexity - numAnchors - numMid);
+
+    const newShapes = [];
+    for (let i = 0; i < numAnchors; i++) {
+        const t = (rng() - 0.5) * 0.35;
+        newShapes.push(makeShape(rng, 'anchor', cx + dirX * t * spread, cy + dirY * t * spread, 110, 190));
+    }
+    for (let i = 0; i < numMid; i++) {
+        const t = (rng() - 0.5) * 1.1;
+        newShapes.push(makeShape(rng, 'mid',
+            cx + dirX * t * spread + (rng() - 0.5) * 90,
+            cy + dirY * t * spread + (rng() - 0.5) * 90, 50, 100));
+    }
+    for (let i = 0; i < numAccent; i++) {
+        const t = (rng() - 0.5) * 1.7;
+        newShapes.push(makeShape(rng, 'accent',
+            cx + dirX * t * spread + (rng() - 0.5) * 170,
+            cy + dirY * t * spread + (rng() - 0.5) * 170, 12, 38));
+    }
+
+    // A couple of thin "stem" lines threading along the flight axis
+    const numStems = 2 + Math.floor(rng() * 2);
+    for (let i = 0; i < numStems; i++) {
+        const t = (rng() - 0.5) * 1.4;
+        const len = Math.max(w, h) * (0.35 + rng() * 0.35);
+        newShapes.push({
+            tier: 'stem', type: 'stem',
+            x: cx + dirX * t * spread, y: cy + dirY * t * spread,
+            baseW: len, baseH: 2, scale: 1,
+            rotation: Math.round((axisDeg + (rng() - 0.5) * 20)),
+            color: rng() < 0.5 ? '#111111' : '#555555',
+        });
+    }
+
+    shapes = newShapes;
+    selectedIndex = -1;
+    populateShapeSelect();
+    draw();
+}
+
+function regenerate() { generateComposition(); }
+function randomSeed() {
+    $('seed').value = Math.floor(Math.random() * 100000);
+    $('seedVal').innerText = $('seed').value;
+    regenerate();
+}
+
+// --- SELECTION UI ---
+function populateShapeSelect() {
+    const sel = $('shapeSelect');
+    sel.innerHTML = shapes.map((s, i) =>
+        `<option value="${i}">${i + 1}. ${s.type[0].toUpperCase()+s.type.slice(1)} (${colorName(s.color)})</option>`
+    ).join('');
+    populateColorSelect();
+    if (shapes.length) selectShape(0);
+}
+function populateColorSelect() {
+    $('shapeColor').innerHTML = PALETTE.map(p => `<option value="${p.hex}">${p.name}</option>`).join('');
+}
+function selectShape(i) {
+    selectedIndex = i;
+    $('shapeSelect').value = i;
+    const s = shapes[i];
+    if (!s) return;
+    $('shapeX').max = canvas.width; $('shapeX').value = Math.round(s.x); $('shapeXVal').innerText = Math.round(s.x);
+    $('shapeY').max = canvas.height; $('shapeY').value = Math.round(s.y); $('shapeYVal').innerText = Math.round(s.y);
+    $('shapeRot').value = s.rotation; $('shapeRotVal').innerText = s.rotation + '°';
+    $('shapeScale').value = s.scale; $('shapeScaleVal').innerText = s.scale.toFixed(2);
+    $('shapeColor').value = s.color;
+}
+$('shapeSelect').addEventListener('change', () => selectShape(parseInt($('shapeSelect').value)));
+$('shapeX').addEventListener('input', () => {
+    if (selectedIndex < 0) return;
+    shapes[selectedIndex].x = parseInt($('shapeX').value);
+    $('shapeXVal').innerText = $('shapeX').value;
+    draw();
+});
+$('shapeY').addEventListener('input', () => {
+    if (selectedIndex < 0) return;
+    shapes[selectedIndex].y = parseInt($('shapeY').value);
+    $('shapeYVal').innerText = $('shapeY').value;
+    draw();
+});
+$('shapeRot').addEventListener('input', () => {
+    if (selectedIndex < 0) return;
+    shapes[selectedIndex].rotation = parseInt($('shapeRot').value);
+    $('shapeRotVal').innerText = $('shapeRot').value + '°';
+    draw();
+});
+$('shapeScale').addEventListener('input', () => {
+    if (selectedIndex < 0) return;
+    shapes[selectedIndex].scale = parseFloat($('shapeScale').value);
+    $('shapeScaleVal').innerText = shapes[selectedIndex].scale.toFixed(2);
+    draw();
+});
+$('shapeColor').addEventListener('change', () => {
+    if (selectedIndex < 0) return;
+    shapes[selectedIndex].color = $('shapeColor').value;
+    draw();
+});
+$('complexity').addEventListener('input', () => { $('complexityVal').innerText = $('complexity').value; });
+$('axisAngle').addEventListener('input', () => { $('axisAngleVal').innerText = $('axisAngle').value + '°'; });
+$('showStems').addEventListener('change', draw);
+
+// --- CANVAS DRAG-TO-MOVE ---
+let canvasDragging = false;
+function hitTest(mx, my) {
+    for (let i = shapes.length - 1; i >= 0; i--) {
+        const s = shapes[i];
+        const r = Math.max(s.baseW, s.baseH) * s.scale * 0.6 + 10;
+        if (Math.hypot(mx - s.x, my - s.y) < r) return i;
+    }
+    return -1;
+}
+canvas.addEventListener('mousedown', (e) => {
+    const i = hitTest(e.clientX, e.clientY);
+    if (i >= 0) { canvasDragging = true; selectShape(i); canvas.style.cursor = 'grabbing'; }
+});
+window.addEventListener('mousemove', (e) => {
+    if (!canvasDragging || selectedIndex < 0) return;
+    shapes[selectedIndex].x = e.clientX;
+    shapes[selectedIndex].y = e.clientY;
+    $('shapeX').value = Math.round(e.clientX); $('shapeXVal').innerText = Math.round(e.clientX);
+    $('shapeY').value = Math.round(e.clientY); $('shapeYVal').innerText = Math.round(e.clientY);
+    draw();
+});
+window.addEventListener('mouseup', () => { canvasDragging = false; canvas.style.cursor = 'default'; });
+
+// --- SHAPE RENDERING ---
+function drawShape(s) {
+    const w = s.baseW * s.scale, h = s.baseH * s.scale;
+    ctx.save();
+    ctx.translate(s.x, s.y);
+    ctx.rotate(s.rotation * Math.PI / 180);
+    ctx.fillStyle = s.color;
+    ctx.strokeStyle = s.color;
+
+    switch (s.type) {
+        case 'rect':
+        case 'bar':
+            ctx.fillRect(-w/2, -h/2, w, h);
+            break;
+        case 'triangle':
+            ctx.beginPath();
+            ctx.moveTo(0, -h/2); ctx.lineTo(w/2, h/2); ctx.lineTo(-w/2, h/2); ctx.closePath();
+            ctx.fill();
+            break;
+        case 'circle':
+        case 'dot':
+            ctx.beginPath(); ctx.arc(0, 0, w/2, 0, Math.PI*2); ctx.fill();
+            break;
+        case 'cross': {
+            const t = Math.max(4, w * 0.16);
+            ctx.fillRect(-w/2, -t/2, w, t);
+            ctx.fillRect(-t/2, -h/2, t, h);
+            break;
+        }
+        case 'crescent': {
+            const r = w/2;
+            ctx.beginPath();
+            ctx.arc(0, 0, r, Math.PI*0.55, Math.PI*1.45);
+            ctx.arc(r*0.55, 0, r*0.85, Math.PI*1.45, Math.PI*0.55, true);
+            ctx.closePath();
+            ctx.fill();
+            break;
+        }
+        case 'stem':
+            ctx.lineWidth = h;
+            ctx.beginPath(); ctx.moveTo(-w/2, 0); ctx.lineTo(w/2, 0); ctx.stroke();
+            break;
+    }
+    ctx.restore();
+}
+
+function draw() {
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = '#f4f1ea';
+    ctx.fillRect(0, 0, w, h);
+
+    const showStems = $('showStems').value === 'yes';
+    const order = { stem: 0, anchor: 2, mid: 1, accent: 3 };
+    const sorted = shapes.map((s, i) => ({ s, i })).sort((a, b) => (order[a.s.tier] ?? 1) - (order[b.s.tier] ?? 1));
+
+    for (const { s, i } of sorted) {
+        if (s.tier === 'stem' && !showStems) continue;
+        drawShape(s);
+        if (i === selectedIndex) {
+            ctx.save();
+            ctx.strokeStyle = '#e0a627';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([6, 4]);
+            const r = Math.max(s.baseW, s.baseH) * s.scale * 0.6 + 10;
+            ctx.strokeRect(s.x - r, s.y - r, r*2, r*2);
+            ctx.restore();
+        }
+    }
+}
+
+function downloadImage() {
+    const link = document.createElement('a');
+    link.download = `suprematist-seed-${$('seed').value}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+}
+
+window.addEventListener('resize', () => { resize(); draw(); });
+
+resize();
+generateComposition();
+</script>
+</body>
+</html>
